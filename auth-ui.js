@@ -67,3 +67,11 @@ function afficherConnexion(onReady) {
 async function deconnexion() {
   await auth.signOut();
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (/administration\.html$/.test(location.pathname)) {
+    const script = document.createElement('script');
+    script.src = 'remplacements.js';
+    document.body.appendChild(script);
+  }
+});
