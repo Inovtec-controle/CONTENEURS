@@ -7,7 +7,9 @@
   <link rel="stylesheet" href="style.css">
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="firebase.js"></script>
+  <script src="auth-ui.js"></script>
   <style>
     .agent-links-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
     .agent-link-card{border:1px solid #dbe4df;border-radius:16px;padding:14px;background:#f8fbf9}
@@ -17,6 +19,9 @@
     .agent-url{width:100%;padding:10px;border:1px solid #ccd8d1;border-radius:10px;background:white;font-size:12px}
     .link-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
     .agent-count{display:inline-block;padding:3px 8px;border-radius:999px;background:#e5f6ea;color:#18713b;font-size:11px;font-weight:700}
+    .message{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;font-size:13px;font-weight:600}
+    .message.show{display:block}.message.info{background:#eff6ff;color:#1d4ed8}.message.success{background:#ecfdf5;color:#047857}.message.error{background:#fef2f2;color:#b91c1c}
+    button:disabled{opacity:.6;cursor:wait}
   </style>
 </head>
 <body>
@@ -29,6 +34,7 @@
     <div class="nav">
       <a class="btn secondary" href="dashboard.html">Dashboard</a>
       <a class="btn secondary" href="index.html">Vue agent</a>
+      <button class="btn secondary" type="button" onclick="deconnexion()">Déconnexion</button>
     </div>
 
     <section class="card">
@@ -54,23 +60,22 @@
           <option value="impaire">Semaines impaires</option>
         </select>
       </div>
-      <p><button class="ok" onclick="ajouter()">＋ Ajouter la tuile</button></p>
+      <p><button id="ajouterBtn" class="ok" type="button">＋ Ajouter la tuile</button></p>
+      <div id="message" class="message" role="status"></div>
     </section>
 
     <section class="card" style="margin-top:16px">
       <h2>🔗 Liens des agents</h2>
       <p class="meta">Chaque agent apparaît une seule fois, même s’il possède plusieurs chantiers.</p>
-      <div id="agents" class="agent-links-grid"></div>
+      <div id="agents" class="agent-links-grid"><div class="empty">Connexion en cours…</div></div>
     </section>
 
     <section class="card" style="margin-top:16px">
       <h2>Passages programmés</h2>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr><th>Chantier</th><th>Action</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr>
-          </thead>
-          <tbody id="liste"></tbody>
+          <thead><tr><th>Chantier</th><th>Action</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr></thead>
+          <tbody id="liste"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -78,22 +83,25 @@
 
 <script>
 const ids=['chantier','adresse','agentNom','agentId','action','jour','debut','fin','frequence'];
+const ajouterBtn=document.getElementById('ajouterBtn');
+const message=document.getElementById('message');
+
+function afficherMessage(texte,type='info'){
+  message.textContent=texte;
+  message.className=`message show ${type}`;
+}
 
 function nettoyerIdentifiant(valeur){
-  return valeur.trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .replace(/[^a-z0-9]+/g,'-')
-    .replace(/^-+|-+$/g,'');
+  return valeur.trim().toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 }
 
 function echapper(texte=''){
-  return String(texte).replace(/[&<>'"]/g,c=>({
-    '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
-  }[c]));
+  return String(texte).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 }
 
 function lienAgent(agentId){
-  const base=location.href.replace(/administration\.html(?:\?.*)?$/,'');
+  const base=new URL('./',location.href);
   return new URL(`?agent=${encodeURIComponent(agentId)}`,base).href;
 }
 
@@ -101,48 +109,60 @@ async function ajouter(){
   const v=Object.fromEntries(ids.map(id=>[id,document.getElementById(id).value.trim()]));
   const agentId=nettoyerIdentifiant(v.agentId);
   if(!v.chantier||!agentId||!v.jour||!v.action){
-    alert('Chantier, agent, jour et action sont obligatoires.');
+    afficherMessage('Le chantier, l’identifiant agent, le jour et l’action sont obligatoires.','error');
     return;
   }
-  await db.collection('conteneurs_plannings').add({
-    chantierNom:v.chantier,
-    adresse:v.adresse,
-    agentNom:v.agentNom||agentId,
-    agentId,
-    action:v.action,
-    jour:v.jour,
-    heureDebut:v.debut,
-    heureFin:v.fin,
-    frequence:v.frequence,
-    actif:true,
-    createdAt:firebase.firestore.FieldValue.serverTimestamp()
-  });
-  document.getElementById('chantier').value='';
-  document.getElementById('adresse').value='';
-  await charger();
+
+  ajouterBtn.disabled=true;
+  ajouterBtn.textContent='Enregistrement…';
+  afficherMessage('Enregistrement de la tuile dans Firebase…','info');
+
+  try{
+    await db.collection('conteneurs_plannings').add({
+      chantierNom:v.chantier,
+      adresse:v.adresse,
+      agentNom:v.agentNom||agentId,
+      agentId,
+      action:v.action,
+      jour:v.jour,
+      heureDebut:v.debut,
+      heureFin:v.fin,
+      frequence:v.frequence,
+      actif:true,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('chantier').value='';
+    document.getElementById('adresse').value='';
+    afficherMessage('✅ La tuile a bien été ajoutée.','success');
+    await charger();
+  }catch(e){
+    console.error(e);
+    const aide=e.code==='permission-denied'
+      ? ' Accès refusé par Firebase : vérifie que tu es connectée avec le même compte que dans tes autres applications.'
+      : '';
+    afficherMessage(`Impossible d’enregistrer : ${e.message}.${aide}`,'error');
+  }finally{
+    ajouterBtn.disabled=false;
+    ajouterBtn.textContent='＋ Ajouter la tuile';
+  }
 }
 
 async function supprimer(id){
-  if(confirm('Supprimer cette programmation ?')){
+  if(!confirm('Supprimer cette programmation ?'))return;
+  try{
     await db.collection('conteneurs_plannings').doc(id).delete();
+    afficherMessage('Programmation supprimée.','success');
     await charger();
+  }catch(e){
+    afficherMessage(`Suppression impossible : ${e.message}`,'error');
   }
 }
 
 async function copierLien(lien,bouton){
-  try{
-    await navigator.clipboard.writeText(lien);
-  }catch(e){
-    const champ=document.createElement('textarea');
-    champ.value=lien;
-    document.body.appendChild(champ);
-    champ.select();
-    document.execCommand('copy');
-    champ.remove();
+  try{await navigator.clipboard.writeText(lien);}catch(e){
+    const champ=document.createElement('textarea');champ.value=lien;document.body.appendChild(champ);champ.select();document.execCommand('copy');champ.remove();
   }
-  const ancien=bouton.textContent;
-  bouton.textContent='✅ Lien copié';
-  setTimeout(()=>bouton.textContent=ancien,1800);
+  const ancien=bouton.textContent;bouton.textContent='✅ Lien copié';setTimeout(()=>bouton.textContent=ancien,1800);
 }
 
 function afficherLiensAgents(data){
@@ -150,57 +170,44 @@ function afficherLiensAgents(data){
   data.forEach(p=>{
     if(!p.agentId)return;
     const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0};
-    existant.nombre++;
-    if(p.agentNom)existant.agentNom=p.agentNom;
-    map.set(p.agentId,existant);
+    existant.nombre++;if(p.agentNom)existant.agentNom=p.agentNom;map.set(p.agentId,existant);
   });
-
   const agents=[...map.values()].sort((a,b)=>a.agentNom.localeCompare(b.agentNom,'fr'));
   const zone=document.getElementById('agents');
-  if(!agents.length){
-    zone.innerHTML='<div class="empty">Ajoute une première programmation pour faire apparaître le lien de l’agent.</div>';
-    return;
-  }
-
+  if(!agents.length){zone.innerHTML='<div class="empty">Ajoute une première programmation pour faire apparaître le lien de l’agent.</div>';return;}
   zone.innerHTML=agents.map(a=>{
     const lien=lienAgent(a.agentId);
-    return `<article class="agent-link-card">
-      <h3>${echapper(a.agentNom)}</h3>
+    return `<article class="agent-link-card"><h3>${echapper(a.agentNom)}</h3>
       <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''}</span></div>
       <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
-      <div class="agent-link-row">
-        <button class="ok copy-agent-link" data-link="${echapper(lien)}">📋 Copier le lien</button>
-        <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a>
-      </div>
-    </article>`;
+      <div class="agent-link-row"><button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
+      <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a></div></article>`;
   }).join('');
-
-  document.querySelectorAll('.copy-agent-link').forEach(bouton=>{
-    bouton.addEventListener('click',()=>copierLien(bouton.dataset.link,bouton));
-  });
+  document.querySelectorAll('.copy-agent-link').forEach(b=>b.addEventListener('click',()=>copierLien(b.dataset.link,b)));
 }
 
 async function charger(){
-  const snap=await db.collection('conteneurs_plannings').get();
-  const data=[];
-  snap.forEach(d=>data.push({id:d.id,...d.data()}));
-  data.sort((a,b)=>(a.jour||'').localeCompare(b.jour||'','fr')||(a.heureDebut||'').localeCompare(b.heureDebut||''));
-
-  afficherLiensAgents(data);
-
-  document.getElementById('liste').innerHTML=data.map(p=>`<tr>
-    <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
-    <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
-    <td>${echapper(p.jour||'')}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
-    <td>${echapper(p.agentNom||p.agentId)}<br><span class="meta">${echapper(p.agentId||'')}</span></td>
-    <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
-    <td><button class="danger" onclick="supprimer('${p.id}')">Supprimer</button></td>
-  </tr>`).join('')||'<tr><td colspan="6" class="empty">Aucune programmation.</td></tr>';
+  try{
+    const snap=await db.collection('conteneurs_plannings').get();
+    const data=[];snap.forEach(d=>data.push({id:d.id,...d.data()}));
+    data.sort((a,b)=>(a.jour||'').localeCompare(b.jour||'','fr')||(a.heureDebut||'').localeCompare(b.heureDebut||''));
+    afficherLiensAgents(data);
+    document.getElementById('liste').innerHTML=data.map(p=>`<tr>
+      <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
+      <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td><td>${echapper(p.jour||'')}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
+      <td>${echapper(p.agentNom||p.agentId)}<br><span class="meta">${echapper(p.agentId||'')}</span></td>
+      <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
+      <td><button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Aucune programmation.</td></tr>';
+  }catch(e){
+    console.error(e);
+    document.getElementById('agents').innerHTML=`<div class="empty">Erreur Firebase : ${echapper(e.message)}</div>`;
+    document.getElementById('liste').innerHTML=`<tr><td colspan="6" class="empty">Erreur Firebase : ${echapper(e.message)}</td></tr>`;
+    afficherMessage(`Chargement impossible : ${e.message}`,'error');
+  }
 }
 
-charger().catch(e=>{
-  document.getElementById('agents').innerHTML=`<div class="empty">Erreur : ${echapper(e.message)}</div>`;
-});
+ajouterBtn.addEventListener('click',ajouter);
+afficherConnexion(()=>charger());
 </script>
 </body>
 </html>
