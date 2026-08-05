@@ -22,12 +22,28 @@
     .message{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;font-size:13px;font-weight:600}
     .message.show{display:block}.message.info{background:#eff6ff;color:#1d4ed8}.message.success{background:#ecfdf5;color:#047857}.message.error{background:#fef2f2;color:#b91c1c}
     button:disabled{opacity:.6;cursor:wait}
+    .site-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .site-form input{width:100%}
+    .planning-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px;flex-wrap:wrap}
+    .planning-header h3{margin:0}
+    .passages-list{display:flex;flex-direction:column;gap:10px}
+    .passage-row{display:grid;grid-template-columns:1.1fr 1.1fr 1fr 1fr 1.4fr auto;gap:8px;align-items:center;padding:12px;border:1px solid #dbe4df;border-radius:14px;background:#f8fbf9}
+    .passage-row select,.passage-row input{width:100%;min-width:0}
+    .remove-passage{white-space:nowrap}
+    .form-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+    .hint{margin:6px 0 0;color:#66756d;font-size:12px}
+    @media(max-width:760px){
+      .site-form{grid-template-columns:1fr}
+      .passage-row{grid-template-columns:1fr 1fr}
+      .passage-row .full-mobile{grid-column:1/-1}
+      .remove-passage{grid-column:1/-1}
+    }
   </style>
 </head>
 <body>
   <header class="topbar">
     <h1>⚙️ Administration</h1>
-    <p>Programmer une tuile par chantier</p>
+    <p>Créer un chantier puis programmer toutes ses sorties et rentrées en une seule fois</p>
   </header>
 
   <main class="container">
@@ -38,29 +54,27 @@
     </div>
 
     <section class="card">
-      <h2>Ajouter un passage récurrent</h2>
-      <div class="form-grid">
+      <h2>Créer un chantier et son planning</h2>
+      <p class="hint">Le nom du chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Ajoute ensuite autant de sorties et de rentrées que nécessaire.</p>
+
+      <div class="site-form" style="margin-top:14px">
         <input id="chantier" placeholder="Nom du chantier">
         <input id="adresse" placeholder="Adresse">
         <input id="agentNom" placeholder="Nom de l’agent">
         <input id="agentId" placeholder="Identifiant agent, ex. michel">
-        <select id="action">
-          <option value="sortie">Sortie</option>
-          <option value="rentree">Rentrée</option>
-        </select>
-        <select id="jour">
-          <option>lundi</option><option>mardi</option><option>mercredi</option>
-          <option>jeudi</option><option>vendredi</option><option>samedi</option><option>dimanche</option>
-        </select>
-        <input id="debut" type="time">
-        <input id="fin" type="time">
-        <select id="frequence">
-          <option value="toutes">Toutes les semaines</option>
-          <option value="paire">Semaines paires</option>
-          <option value="impaire">Semaines impaires</option>
-        </select>
       </div>
-      <p><button id="ajouterBtn" class="ok" type="button">＋ Ajouter la tuile</button></p>
+
+      <div class="planning-header">
+        <h3>Passages du chantier</h3>
+        <button id="ajouterPassageBtn" class="btn secondary" type="button">＋ Ajouter un passage</button>
+      </div>
+
+      <div id="passages" class="passages-list"></div>
+
+      <div class="form-actions">
+        <button id="enregistrerBtn" class="ok" type="button">✅ Enregistrer le chantier et tous ses passages</button>
+        <button id="reinitialiserBtn" class="btn secondary" type="button">Réinitialiser le formulaire</button>
+      </div>
       <div id="message" class="message" role="status"></div>
     </section>
 
@@ -82,9 +96,17 @@
   </main>
 
 <script>
-const ids=['chantier','adresse','agentNom','agentId','action','jour','debut','fin','frequence'];
-const ajouterBtn=document.getElementById('ajouterBtn');
+const passagesZone=document.getElementById('passages');
+const enregistrerBtn=document.getElementById('enregistrerBtn');
 const message=document.getElementById('message');
+let compteurPassages=0;
+
+const joursOptions=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
+const frequencesOptions=[
+  ['toutes','Toutes les semaines'],
+  ['paire','Semaines paires'],
+  ['impaire','Semaines impaires']
+];
 
 function afficherMessage(texte,type='info'){
   message.textContent=texte;
@@ -105,45 +127,133 @@ function lienAgent(agentId){
   return new URL(`?agent=${encodeURIComponent(agentId)}`,base).href;
 }
 
-async function ajouter(){
-  const v=Object.fromEntries(ids.map(id=>[id,document.getElementById(id).value.trim()]));
-  const agentId=nettoyerIdentifiant(v.agentId);
-  if(!v.chantier||!agentId||!v.jour||!v.action){
-    afficherMessage('Le chantier, l’identifiant agent, le jour et l’action sont obligatoires.','error');
+function optionsHTML(options,selection){
+  return options.map(option=>{
+    const valeur=Array.isArray(option)?option[0]:option;
+    const libelle=Array.isArray(option)?option[1]:option;
+    return `<option value="${echapper(valeur)}"${valeur===selection?' selected':''}>${echapper(libelle)}</option>`;
+  }).join('');
+}
+
+function ajouterLignePassage(valeurs={}){
+  compteurPassages++;
+  const id=compteurPassages;
+  const ligne=document.createElement('div');
+  ligne.className='passage-row';
+  ligne.dataset.rowId=id;
+  ligne.innerHTML=`
+    <select class="passage-jour" aria-label="Jour">${optionsHTML(joursOptions,valeurs.jour||'lundi')}</select>
+    <select class="passage-action" aria-label="Action">
+      <option value="sortie"${valeurs.action==='sortie'?' selected':''}>Sortie</option>
+      <option value="rentree"${valeurs.action==='rentree'?' selected':''}>Rentrée</option>
+    </select>
+    <input class="passage-debut" type="time" value="${echapper(valeurs.heureDebut||'')}" aria-label="Heure de début">
+    <input class="passage-fin" type="time" value="${echapper(valeurs.heureFin||'')}" aria-label="Heure de fin">
+    <select class="passage-frequence full-mobile" aria-label="Fréquence">${optionsHTML(frequencesOptions,valeurs.frequence||'toutes')}</select>
+    <button class="danger remove-passage" type="button">Supprimer</button>
+  `;
+  ligne.querySelector('.remove-passage').addEventListener('click',()=>{
+    if(passagesZone.children.length===1){
+      afficherMessage('Il faut conserver au moins un passage.','error');
+      return;
+    }
+    ligne.remove();
+  });
+  passagesZone.appendChild(ligne);
+}
+
+function lirePassages(){
+  return [...passagesZone.querySelectorAll('.passage-row')].map(ligne=>({
+    jour:ligne.querySelector('.passage-jour').value,
+    action:ligne.querySelector('.passage-action').value,
+    heureDebut:ligne.querySelector('.passage-debut').value,
+    heureFin:ligne.querySelector('.passage-fin').value,
+    frequence:ligne.querySelector('.passage-frequence').value
+  }));
+}
+
+function reinitialiserFormulaire(){
+  document.getElementById('chantier').value='';
+  document.getElementById('adresse').value='';
+  document.getElementById('agentNom').value='';
+  document.getElementById('agentId').value='';
+  passagesZone.innerHTML='';
+  ajouterLignePassage();
+  message.className='message';
+  message.textContent='';
+}
+
+async function enregistrerChantier(){
+  const chantier=document.getElementById('chantier').value.trim();
+  const adresse=document.getElementById('adresse').value.trim();
+  const agentNom=document.getElementById('agentNom').value.trim();
+  const agentId=nettoyerIdentifiant(document.getElementById('agentId').value);
+  const passages=lirePassages();
+
+  if(!chantier||!agentId){
+    afficherMessage('Le nom du chantier et l’identifiant de l’agent sont obligatoires.','error');
+    return;
+  }
+  if(!passages.length){
+    afficherMessage('Ajoute au moins un passage.','error');
     return;
   }
 
-  ajouterBtn.disabled=true;
-  ajouterBtn.textContent='Enregistrement…';
-  afficherMessage('Enregistrement de la tuile dans Firebase…','info');
+  const doublons=new Set();
+  for(const passage of passages){
+    if(!passage.jour||!passage.action){
+      afficherMessage('Chaque ligne doit contenir un jour et une action.','error');
+      return;
+    }
+    if(passage.heureDebut&&passage.heureFin&&passage.heureFin<=passage.heureDebut){
+      afficherMessage(`L’heure de fin doit être après l’heure de début pour le passage du ${passage.jour}.`,'error');
+      return;
+    }
+    const cle=[passage.jour,passage.action,passage.heureDebut,passage.heureFin,passage.frequence].join('|');
+    if(doublons.has(cle)){
+      afficherMessage('Deux lignes de passage sont identiques. Supprime le doublon avant d’enregistrer.','error');
+      return;
+    }
+    doublons.add(cle);
+  }
+
+  enregistrerBtn.disabled=true;
+  enregistrerBtn.textContent=`Enregistrement de ${passages.length} passage${passages.length>1?'s':''}…`;
+  afficherMessage('Enregistrement du chantier dans Firebase…','info');
 
   try{
-    await db.collection('conteneurs_plannings').add({
-      chantierNom:v.chantier,
-      adresse:v.adresse,
-      agentNom:v.agentNom||agentId,
-      agentId,
-      action:v.action,
-      jour:v.jour,
-      heureDebut:v.debut,
-      heureFin:v.fin,
-      frequence:v.frequence,
-      actif:true,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    const batch=db.batch();
+    const chantierGroupeId=`${nettoyerIdentifiant(chantier)}-${Date.now()}`;
+    passages.forEach(passage=>{
+      const ref=db.collection('conteneurs_plannings').doc();
+      batch.set(ref,{
+        chantierNom:chantier,
+        chantierGroupeId,
+        adresse,
+        agentNom:agentNom||agentId,
+        agentId,
+        action:passage.action,
+        jour:passage.jour,
+        heureDebut:passage.heureDebut,
+        heureFin:passage.heureFin,
+        frequence:passage.frequence,
+        actif:true,
+        createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
-    document.getElementById('chantier').value='';
-    document.getElementById('adresse').value='';
-    afficherMessage('✅ La tuile a bien été ajoutée.','success');
+    await batch.commit();
+    reinitialiserFormulaire();
+    afficherMessage(`✅ Le chantier a été enregistré avec ${passages.length} passage${passages.length>1?'s':''}.`,'success');
     await charger();
   }catch(e){
     console.error(e);
     const aide=e.code==='permission-denied'
-      ? ' Accès refusé par Firebase : vérifie que tu es connectée avec le même compte que dans tes autres applications.'
+      ? ' Accès refusé par Firebase : vérifie les règles Firestore et ta connexion.'
       : '';
     afficherMessage(`Impossible d’enregistrer : ${e.message}.${aide}`,'error');
   }finally{
-    ajouterBtn.disabled=false;
-    ajouterBtn.textContent='＋ Ajouter la tuile';
+    enregistrerBtn.disabled=false;
+    enregistrerBtn.textContent='✅ Enregistrer le chantier et tous ses passages';
   }
 }
 
@@ -190,7 +300,12 @@ async function charger(){
   try{
     const snap=await db.collection('conteneurs_plannings').get();
     const data=[];snap.forEach(d=>data.push({id:d.id,...d.data()}));
-    data.sort((a,b)=>(a.jour||'').localeCompare(b.jour||'','fr')||(a.heureDebut||'').localeCompare(b.heureDebut||''));
+    const ordreJours={lundi:1,mardi:2,mercredi:3,jeudi:4,vendredi:5,samedi:6,dimanche:7};
+    data.sort((a,b)=>
+      (a.chantierNom||'').localeCompare(b.chantierNom||'','fr')
+      ||(ordreJours[a.jour]||9)-(ordreJours[b.jour]||9)
+      ||(a.heureDebut||'').localeCompare(b.heureDebut||'')
+    );
     afficherLiensAgents(data);
     document.getElementById('liste').innerHTML=data.map(p=>`<tr>
       <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
@@ -206,7 +321,12 @@ async function charger(){
   }
 }
 
-ajouterBtn.addEventListener('click',ajouter);
+document.getElementById('ajouterPassageBtn').addEventListener('click',()=>ajouterLignePassage());
+document.getElementById('reinitialiserBtn').addEventListener('click',()=>{
+  if(confirm('Effacer les informations saisies dans le formulaire ?'))reinitialiserFormulaire();
+});
+enregistrerBtn.addEventListener('click',enregistrerChantier);
+ajouterLignePassage();
 afficherConnexion(()=>charger());
 </script>
 </body>
