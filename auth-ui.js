@@ -72,6 +72,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (/administration\.html$/.test(location.pathname)) {
     const script = document.createElement('script');
     script.src = 'remplacements.js';
+    script.onload = () => {
+      if (window.auth?.currentUser && typeof charger === 'function') {
+        charger().catch(console.error);
+      }
+    };
     document.body.appendChild(script);
   }
 });
