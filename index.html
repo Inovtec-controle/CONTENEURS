@@ -10,83 +10,108 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="firebase.js"></script>
   <script src="auth-ui.js"></script>
+  <style>
+    .container-type{display:inline-flex;align-items:center;gap:7px;margin:12px 0 4px;padding:7px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:13px}
+    .status-message{padding:12px;border-radius:12px;background:#f8fafc;margin-top:10px}
+  </style>
 </head>
 <body>
   <header class="topbar">
     <h1>🗑️ Mes passages du jour</h1>
     <p id="agentLabel">Chargement…</p>
   </header>
+
   <main class="container">
     <div class="nav">
-      <button class="btn secondary" type="button" onclick="charger()">Actualiser</button>
       <button class="btn secondary" type="button" onclick="deconnexion()">Déconnexion</button>
     </div>
     <div id="tiles" class="grid"><div class="card empty">Connexion en cours…</div></div>
   </main>
+
 <script>
 const params=new URLSearchParams(location.search);
 const agent=(params.get('agent')||'').trim().toLowerCase();
 const label=document.getElementById('agentLabel');
 const tiles=document.getElementById('tiles');
-label.textContent=agent?`Agent : ${agent}`:'Aucun agent indiqué dans le lien';
 
 function echapper(texte=''){
   return String(texte).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 }
 
+label.textContent=agent?`Agent : ${agent}`:'Aucun agent indiqué dans le lien';
+
 async function charger(){
-  if(!agent){tiles.innerHTML='<div class="card empty">Le lien ne contient pas d’identifiant agent.</div>';return;}
-  tiles.innerHTML='<div class="card empty">Chargement des passages…</div>';
-  try{
-    const [plansSnap,pointsSnap]=await Promise.all([
-      db.collection('conteneurs_plannings').where('agentId','==',agent).get(),
-      db.collection('conteneurs_pointages').where('date','==',dateISO()).get()
-    ]);
-    const points={};pointsSnap.forEach(d=>points[d.id]=d.data());
-    const plans=[];plansSnap.forEach(d=>{const p={id:d.id,...d.data()};if(planningActifAujourdHui(p))plans.push(p)});
-    plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||''));
-    if(!plans.length){tiles.innerHTML='<div class="card empty">Aucun passage prévu aujourd’hui.</div>';return;}
-    tiles.innerHTML=plans.map(p=>tuile(p,points[idPointage(p.id)])).join('');
-  }catch(e){
-    console.error(e);
-    tiles.innerHTML=`<div class="card empty">Impossible de charger les passages : ${echapper(e.message)}</div>`;
+  if(!agent){
+    tiles.innerHTML='<div class="card empty">Le lien de l’agent est incomplet.</div>';
+    return;
   }
+
+  const [plansSnap,pointsSnap]=await Promise.all([
+    db.collection('conteneurs_plannings').where('agentId','==',agent).get(),
+    db.collection('conteneurs_pointages').where('date','==',dateISO()).get()
+  ]);
+
+  const points={};
+  pointsSnap.forEach(d=>points[d.id]=d.data());
+
+  const plans=[];
+  plansSnap.forEach(d=>{
+    const p={id:d.id,...d.data()};
+    if(planningActifAujourdHui(p))plans.push(p);
+  });
+  plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||''));
+
+  if(!plans.length){
+    tiles.innerHTML='<div class="card empty">Aucun passage prévu aujourd’hui.</div>';
+    return;
+  }
+
+  tiles.innerHTML=plans.map(p=>tuile(p,points[idPointage(p.id)])).join('');
 }
 
 function tuile(p,point){
   const statut=point?.statut||'afaire';
   const cls=statut==='fait'?'done':statut==='probleme'?'problem':'';
+  const type=echapper(p.typeConteneur||'Type non précisé');
+  const etat=point
+    ? `<div class="status-message"><strong>${statut==='fait'?'✅ Effectué':'⚠️ Problème signalé'}</strong><br><span class="meta">${echapper(point.heure||'')}${point.motif?' — '+echapper(point.motif):''}</span></div>`
+    : `<div class="buttons"><button class="ok" onclick="valider('${p.id}','fait')">✅ FAIT</button><button class="warning" onclick="valider('${p.id}','probleme')">⚠️ SIGNALER UN PROBLÈME</button></div>`;
+
   return `<section class="tile ${cls}" id="tile-${p.id}">
     <h2>${echapper(p.chantierNom)}</h2>
     <div class="address">${echapper(p.adresse||'')}</div>
     <div class="action ${p.action}">${p.action==='sortie'?'⬆️ SORTIE DES CONTENEURS':'⬇️ RENTRÉE DES CONTENEURS'}</div>
+    <div class="container-type">🗑️ ${type}</div>
     <div class="meta">Prévu : ${echapper(p.heureDebut||'—')} à ${echapper(p.heureFin||'—')}</div>
-    ${point?`<p><strong>${statut==='fait'?'✅ Effectué':'⚠️ Problème signalé'}</strong><br><span class="meta">${echapper(point.heure||'')}${point.motif?' — '+echapper(point.motif):''}</span></p>`:
-    `<div class="buttons"><button class="ok" type="button" onclick="valider(this,'${p.id}','fait')">✅ FAIT</button><button class="warning" type="button" onclick="valider(this,'${p.id}','probleme')">⚠️ SIGNALER UN PROBLÈME</button></div>`}
+    ${etat}
   </section>`;
 }
 
-async function valider(bouton,id,statut){
+async function valider(id,statut){
   let motif='';
-  if(statut==='probleme')motif=prompt('Quel est le problème ?')||'Problème non précisé';
-  const boutons=bouton.closest('.buttons').querySelectorAll('button');
-  boutons.forEach(b=>b.disabled=true);
-  const ancien=bouton.textContent;bouton.textContent='Enregistrement…';
+  if(statut==='probleme'){
+    motif=prompt('Quel est le problème ?')||'Problème non précisé';
+  }
+  const now=new Date();
   try{
-    const now=new Date();
     await db.collection('conteneurs_pointages').doc(idPointage(id)).set({
-      planningId:id,agentId:agent,date:dateISO(now),
+      planningId:id,
+      agentId:agent,
+      date:dateISO(now),
       heure:now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
-      statut,motif,createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      statut,
+      motif,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
     });
     await charger();
   }catch(e){
-    console.error(e);alert(`Impossible d’enregistrer : ${e.message}`);
-    boutons.forEach(b=>b.disabled=false);bouton.textContent=ancien;
+    alert(`Impossible d’enregistrer : ${e.message}`);
   }
 }
 
-afficherConnexion(()=>charger());
+afficherConnexion(()=>charger().catch(e=>{
+  tiles.innerHTML=`<div class="card empty">Erreur : ${echapper(e.message)}</div>`;
+}));
 </script>
 </body>
 </html>
