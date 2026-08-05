@@ -56,7 +56,7 @@
 
     <section class="card">
       <h2>Créer un chantier et son planning</h2>
-      <p class="hint">Le chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Pour chaque passage, choisis uniquement OM ou TRI.</p>
+      <p class="hint">Le chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Pour chaque passage, choisis OM, TRI ou OM/TRI.</p>
 
       <div class="site-form" style="margin-top:14px">
         <input id="chantier" placeholder="Nom du chantier">
@@ -142,6 +142,7 @@ function ajouterLignePassage(valeurs={}){
   const ligne=document.createElement('div');
   ligne.className='passage-row';
   ligne.dataset.rowId=id;
+  const typeSelectionne=['OM','TRI','OM/TRI'].includes(valeurs.typeConteneur)?valeurs.typeConteneur:'OM';
   ligne.innerHTML=`
     <select class="passage-jour" aria-label="Jour">${optionsHTML(joursOptions,valeurs.jour||'lundi')}</select>
     <select class="passage-action" aria-label="Action">
@@ -149,8 +150,9 @@ function ajouterLignePassage(valeurs={}){
       <option value="rentree"${valeurs.action==='rentree'?' selected':''}>Rentrée</option>
     </select>
     <select class="passage-type full-mobile" aria-label="Type de conteneur">
-      <option value="OM"${valeurs.typeConteneur==='TRI'?'':' selected'}>OM</option>
-      <option value="TRI"${valeurs.typeConteneur==='TRI'?' selected':''}>TRI</option>
+      <option value="OM"${typeSelectionne==='OM'?' selected':''}>OM</option>
+      <option value="TRI"${typeSelectionne==='TRI'?' selected':''}>TRI</option>
+      <option value="OM/TRI"${typeSelectionne==='OM/TRI'?' selected':''}>OM/TRI</option>
     </select>
     <input class="passage-debut" type="time" value="${echapper(valeurs.heureDebut||'')}" aria-label="Heure de début">
     <input class="passage-fin" type="time" value="${echapper(valeurs.heureFin||'')}" aria-label="Heure de fin">
@@ -207,8 +209,8 @@ async function enregistrerChantier(){
 
   const doublons=new Set();
   for(const passage of passages){
-    if(!passage.jour||!passage.action||!['OM','TRI'].includes(passage.typeConteneur)){
-      afficherMessage('Chaque ligne doit contenir un jour, une action et un type OM ou TRI.','error');
+    if(!passage.jour||!passage.action||!['OM','TRI','OM/TRI'].includes(passage.typeConteneur)){
+      afficherMessage('Chaque ligne doit contenir un jour, une action et un type OM, TRI ou OM/TRI.','error');
       return;
     }
     if(passage.heureDebut&&passage.heureFin&&passage.heureFin<=passage.heureDebut){
