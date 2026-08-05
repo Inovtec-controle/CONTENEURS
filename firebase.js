@@ -37,6 +37,36 @@ function planningActifAujourdHui(planning, date = new Date()) {
   return true;
 }
 
+function remplacementPourDate(planning, date = new Date()) {
+  const iso = dateISO(date);
+  const remplacements = Array.isArray(planning.remplacements) ? planning.remplacements : [];
+  return remplacements
+    .filter(r => r && !r.annule && r.agentId && r.debut && r.fin && r.debut <= iso && iso <= r.fin)
+    .sort((a, b) => String(b.creeLe || "").localeCompare(String(a.creeLe || "")))[0] || null;
+}
+
+function agentEffectifPourDate(planning, date = new Date()) {
+  const remplacement = remplacementPourDate(planning, date);
+  if (remplacement) {
+    return {
+      agentId: remplacement.agentId,
+      agentNom: remplacement.agentNom || remplacement.agentId,
+      estRemplacant: true,
+      remplacementId: remplacement.id || "",
+      titulaireId: planning.agentId || "",
+      titulaireNom: planning.agentNom || planning.agentId || ""
+    };
+  }
+  return {
+    agentId: planning.agentId || "",
+    agentNom: planning.agentNom || planning.agentId || "",
+    estRemplacant: false,
+    remplacementId: "",
+    titulaireId: planning.agentId || "",
+    titulaireNom: planning.agentNom || planning.agentId || ""
+  };
+}
+
 function idPointage(planningId, date = new Date()) {
   return `${planningId}_${dateISO(date)}`;
 }
