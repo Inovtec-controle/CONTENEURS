@@ -10,60 +10,99 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="firebase.js"></script>
   <script src="auth-ui.js"></script>
+  <style>
+    .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
+  </style>
 </head>
 <body>
-  <header class="topbar"><h1>📊 Dashboard conteneurs</h1><p>Suivi des sorties et rentrées du jour</p></header>
+  <header class="topbar">
+    <h1>📊 Dashboard conteneurs</h1>
+    <p>Suivi des sorties et rentrées du jour</p>
+  </header>
+
   <main class="container">
     <div class="nav">
       <a class="btn secondary" href="administration.html">Administration</a>
-      <button class="btn secondary" type="button" onclick="charger()">Actualiser</button>
       <button class="btn secondary" type="button" onclick="deconnexion()">Déconnexion</button>
     </div>
+
     <div id="stats" class="stats"></div>
-    <div class="table-wrap"><table><thead><tr><th>Chantier</th><th>Action</th><th>Agent</th><th>Prévu</th><th>Statut</th><th>Heure</th></tr></thead><tbody id="rows"><tr><td colspan="6" class="empty">Connexion en cours…</td></tr></tbody></table></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Chantier</th><th>Action</th><th>Type</th><th>Agent</th><th>Prévu</th><th>Statut</th><th>Heure</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="7" class="empty">Connexion en cours…</td></tr></tbody>
+      </table>
+    </div>
   </main>
+
 <script>
-const rows=document.getElementById('rows'),stats=document.getElementById('stats');
-let unsubscribe=null;
+const rows=document.getElementById('rows');
+const stats=document.getElementById('stats');
 
 function echapper(texte=''){
   return String(texte).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 }
 
 async function charger(){
-  try{
-    const [ps,pts]=await Promise.all([
-      db.collection('conteneurs_plannings').get(),
-      db.collection('conteneurs_pointages').where('date','==',dateISO()).get()
-    ]);
-    const points={};pts.forEach(d=>points[d.id]=d.data());
-    const plans=[];ps.forEach(d=>{const p={id:d.id,...d.data()};if(planningActifAujourdHui(p))plans.push(p)});
-    plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||''));
-    let fait=0,probleme=0;
-    rows.innerHTML=plans.map(p=>{
-      const point=points[idPointage(p.id)];let badge='<span class="badge todo">À faire</span>',heure='—';
-      if(point?.statut==='fait'){fait++;badge='<span class="badge done-badge">Fait</span>';heure=point.heure||'—'}
-      else if(point?.statut==='probleme'){probleme++;badge='<span class="badge problem-badge">Problème</span>';heure=point.heure||'—'}
-      return `<tr><td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
-        <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td><td>${echapper(p.agentNom||p.agentId)}</td>
-        <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
-        <td>${badge}${point?.motif?`<br><span class="meta">${echapper(point.motif)}</span>`:''}</td><td>${echapper(heure)}</td></tr>`;
-    }).join('')||'<tr><td colspan="6" class="empty">Aucune intervention prévue aujourd’hui.</td></tr>';
-    stats.innerHTML=`<div class="stat"><span>Prévus</span><strong>${plans.length}</strong></div><div class="stat"><span>Effectués</span><strong>${fait}</strong></div><div class="stat"><span>À faire</span><strong>${plans.length-fait-probleme}</strong></div><div class="stat"><span>Problèmes</span><strong>${probleme}</strong></div>`;
-  }catch(e){
-    console.error(e);rows.innerHTML=`<tr><td colspan="6" class="empty">Erreur Firebase : ${echapper(e.message)}</td></tr>`;
-  }
-}
+  const [ps,pts]=await Promise.all([
+    db.collection('conteneurs_plannings').get(),
+    db.collection('conteneurs_pointages').where('date','==',dateISO()).get()
+  ]);
 
-function demarrer(){
-  charger();
-  if(unsubscribe)unsubscribe();
-  unsubscribe=db.collection('conteneurs_pointages').where('date','==',dateISO()).onSnapshot(()=>charger(),e=>{
-    rows.innerHTML=`<tr><td colspan="6" class="empty">Erreur Firebase : ${echapper(e.message)}</td></tr>`;
+  const points={};
+  pts.forEach(d=>points[d.id]=d.data());
+
+  const plans=[];
+  ps.forEach(d=>{
+    const p={id:d.id,...d.data()};
+    if(planningActifAujourdHui(p))plans.push(p);
   });
+  plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||''));
+
+  let fait=0;
+  let probleme=0;
+
+  rows.innerHTML=plans.map(p=>{
+    const point=points[idPointage(p.id)];
+    let badge='<span class="badge todo">À faire</span>';
+    let heure='—';
+
+    if(point?.statut==='fait'){
+      fait++;
+      badge='<span class="badge done-badge">Fait</span>';
+      heure=point.heure||'—';
+    }else if(point?.statut==='probleme'){
+      probleme++;
+      badge='<span class="badge problem-badge">Problème</span>';
+      heure=point.heure||'—';
+    }
+
+    return `<tr>
+      <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
+      <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
+      <td><span class="type-tag">${echapper(p.typeConteneur||'Non précisé')}</span></td>
+      <td>${echapper(p.agentNom||p.agentId)}</td>
+      <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
+      <td>${badge}${point?.motif?`<br><span class="meta">${echapper(point.motif)}</span>`:''}</td>
+      <td>${echapper(heure)}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">Aucune intervention prévue aujourd’hui.</td></tr>';
+
+  stats.innerHTML=`
+    <div class="stat"><span>Prévus</span><strong>${plans.length}</strong></div>
+    <div class="stat"><span>Effectués</span><strong>${fait}</strong></div>
+    <div class="stat"><span>À faire</span><strong>${plans.length-fait-probleme}</strong></div>
+    <div class="stat"><span>Problèmes</span><strong>${probleme}</strong></div>`;
 }
 
-afficherConnexion(()=>demarrer());
+afficherConnexion(()=>{
+  charger().catch(e=>rows.innerHTML=`<tr><td colspan="7" class="empty">Erreur : ${echapper(e.message)}</td></tr>`);
+  db.collection('conteneurs_pointages').where('date','==',dateISO()).onSnapshot(
+    ()=>charger(),
+    e=>rows.innerHTML=`<tr><td colspan="7" class="empty">Erreur : ${echapper(e.message)}</td></tr>`
+  );
+});
 </script>
 </body>
 </html>
