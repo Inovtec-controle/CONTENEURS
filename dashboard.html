@@ -12,12 +12,26 @@
   <script src="auth-ui.js"></script>
   <style>
     .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
+    .calendar-card{margin-bottom:16px}
+    .calendar-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .calendar-toolbar input[type="date"]{padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font:inherit;font-weight:700}
+    .selected-date{margin-top:12px;font-size:18px;font-weight:800}
+    .history-note{margin:5px 0 0;color:#64748b;font-size:13px}
+    .badge.missed-badge{background:#fee2e2;color:#991b1b}
+    .badge.future-badge{background:#e0f2fe;color:#075985}
+    tr.row-missed td{background:#fff5f5}
+    tr.row-problem td{background:#fffbeb}
+    .stat.failure strong{color:#b91c1c}
+    @media(max-width:650px){
+      .calendar-toolbar .btn,.calendar-toolbar input[type="date"]{width:100%}
+      .selected-date{font-size:16px}
+    }
   </style>
 </head>
 <body>
   <header class="topbar">
     <h1>📊 Dashboard conteneurs</h1>
-    <p>Suivi des sorties et rentrées du jour</p>
+    <p>Suivi quotidien et historique des sorties et rentrées</p>
   </header>
 
   <main class="container">
@@ -25,6 +39,18 @@
       <a class="btn secondary" href="administration.html">Administration</a>
       <button class="btn secondary" type="button" onclick="deconnexion()">Déconnexion</button>
     </div>
+
+    <section class="card calendar-card">
+      <h2>📅 Consulter une date</h2>
+      <div class="calendar-toolbar">
+        <button id="jourPrecedent" class="btn secondary" type="button">← Jour précédent</button>
+        <input id="dateConsultation" type="date" aria-label="Date à consulter">
+        <button id="aujourdhui" class="btn secondary" type="button">Aujourd’hui</button>
+        <button id="jourSuivant" class="btn secondary" type="button">Jour suivant →</button>
+      </div>
+      <div id="dateLibelle" class="selected-date"></div>
+      <p class="history-note">Pour une date passée, une prestation sans pointage apparaît automatiquement comme « Non effectuée ».</p>
+    </section>
 
     <div id="stats" class="stats"></div>
 
@@ -39,15 +65,57 @@
 <script>
 const rows=document.getElementById('rows');
 const stats=document.getElementById('stats');
+const dateInput=document.getElementById('dateConsultation');
+const dateLibelle=document.getElementById('dateLibelle');
+let arretEcoutePointages=null;
 
 function echapper(texte=''){
   return String(texte).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 }
 
+function dateDepuisISO(iso){
+  const [annee,mois,jour]=iso.split('-').map(Number);
+  return new Date(annee,mois-1,jour,12,0,0,0);
+}
+
+function modifierDate(nombreJours){
+  const date=dateDepuisISO(dateInput.value||dateISO());
+  date.setDate(date.getDate()+nombreJours);
+  dateInput.value=dateISO(date);
+  ecouterDateSelectionnee();
+}
+
+function planningValablePourDate(planning,date){
+  if(planning.createdAt&&typeof planning.createdAt.toDate==='function'){
+    const finJour=new Date(date);
+    finJour.setHours(23,59,59,999);
+    if(planning.createdAt.toDate()>finJour)return false;
+  }
+  return planningActifAujourdHui(planning,date);
+}
+
+function estDatePassee(iso){
+  return iso<dateISO();
+}
+
+function estAujourdhui(iso){
+  return iso===dateISO();
+}
+
+function afficherDate(date){
+  const libelle=date.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  dateLibelle.textContent=libelle.charAt(0).toUpperCase()+libelle.slice(1);
+}
+
 async function charger(){
+  const isoSelection=dateInput.value||dateISO();
+  const dateSelection=dateDepuisISO(isoSelection);
+  afficherDate(dateSelection);
+  rows.innerHTML='<tr><td colspan="7" class="empty">Chargement…</td></tr>';
+
   const [ps,pts]=await Promise.all([
     db.collection('conteneurs_plannings').get(),
-    db.collection('conteneurs_pointages').where('date','==',dateISO()).get()
+    db.collection('conteneurs_pointages').where('date','==',isoSelection).get()
   ]);
 
   const points={};
@@ -56,17 +124,21 @@ async function charger(){
   const plans=[];
   ps.forEach(d=>{
     const p={id:d.id,...d.data()};
-    if(planningActifAujourdHui(p))plans.push(p);
+    if(planningValablePourDate(p,dateSelection))plans.push(p);
   });
-  plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||''));
+  plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||'')||(a.chantierNom||'').localeCompare(b.chantierNom||'','fr'));
 
   let fait=0;
   let probleme=0;
+  let nonEffectue=0;
+  let aFaire=0;
+  let aVenir=0;
 
   rows.innerHTML=plans.map(p=>{
-    const point=points[idPointage(p.id)];
-    let badge='<span class="badge todo">À faire</span>';
+    const point=points[idPointage(p.id,dateSelection)];
+    let badge='';
     let heure='—';
+    let ligneClasse='';
 
     if(point?.statut==='fait'){
       fait++;
@@ -74,11 +146,22 @@ async function charger(){
       heure=point.heure||'—';
     }else if(point?.statut==='probleme'){
       probleme++;
+      ligneClasse='row-problem';
       badge='<span class="badge problem-badge">Problème</span>';
       heure=point.heure||'—';
+    }else if(estDatePassee(isoSelection)){
+      nonEffectue++;
+      ligneClasse='row-missed';
+      badge='<span class="badge missed-badge">Non effectué</span>';
+    }else if(estAujourdhui(isoSelection)){
+      aFaire++;
+      badge='<span class="badge todo">À faire</span>';
+    }else{
+      aVenir++;
+      badge='<span class="badge future-badge">À venir</span>';
     }
 
-    return `<tr>
+    return `<tr class="${ligneClasse}">
       <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
       <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
       <td><span class="type-tag">${echapper(p.typeConteneur||'Non précisé')}</span></td>
@@ -87,22 +170,40 @@ async function charger(){
       <td>${badge}${point?.motif?`<br><span class="meta">${echapper(point.motif)}</span>`:''}</td>
       <td>${echapper(heure)}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="7" class="empty">Aucune intervention prévue aujourd’hui.</td></tr>';
+  }).join('')||'<tr><td colspan="7" class="empty">Aucune intervention prévue pour cette date.</td></tr>';
 
+  const defaillances=probleme+nonEffectue;
   stats.innerHTML=`
     <div class="stat"><span>Prévus</span><strong>${plans.length}</strong></div>
     <div class="stat"><span>Effectués</span><strong>${fait}</strong></div>
-    <div class="stat"><span>À faire</span><strong>${plans.length-fait-probleme}</strong></div>
-    <div class="stat"><span>Problèmes</span><strong>${probleme}</strong></div>`;
+    <div class="stat"><span>${estDatePassee(isoSelection)?'Non effectués':estAujourdhui(isoSelection)?'À faire':'À venir'}</span><strong>${estDatePassee(isoSelection)?nonEffectue:estAujourdhui(isoSelection)?aFaire:aVenir}</strong></div>
+    <div class="stat"><span>Problèmes</span><strong>${probleme}</strong></div>
+    <div class="stat failure"><span>Défaillances</span><strong>${defaillances}</strong></div>`;
 }
 
-afficherConnexion(()=>{
-  charger().catch(e=>rows.innerHTML=`<tr><td colspan="7" class="empty">Erreur : ${echapper(e.message)}</td></tr>`);
-  db.collection('conteneurs_pointages').where('date','==',dateISO()).onSnapshot(
-    ()=>charger(),
-    e=>rows.innerHTML=`<tr><td colspan="7" class="empty">Erreur : ${echapper(e.message)}</td></tr>`
+function ecouterDateSelectionnee(){
+  if(arretEcoutePointages)arretEcoutePointages();
+  const iso=dateInput.value||dateISO();
+  arretEcoutePointages=db.collection('conteneurs_pointages').where('date','==',iso).onSnapshot(
+    ()=>charger().catch(afficherErreur),
+    afficherErreur
   );
+}
+
+function afficherErreur(e){
+  rows.innerHTML=`<tr><td colspan="7" class="empty">Erreur : ${echapper(e.message)}</td></tr>`;
+}
+
+document.getElementById('jourPrecedent').addEventListener('click',()=>modifierDate(-1));
+document.getElementById('jourSuivant').addEventListener('click',()=>modifierDate(1));
+document.getElementById('aujourdhui').addEventListener('click',()=>{
+  dateInput.value=dateISO();
+  ecouterDateSelectionnee();
 });
+dateInput.addEventListener('change',ecouterDateSelectionnee);
+
+dateInput.value=dateISO();
+afficherConnexion(()=>ecouterDateSelectionnee());
 </script>
 </body>
 </html>
