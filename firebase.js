@@ -7,8 +7,9 @@ const firebaseConfig = {
   appId: "1:313162345276:web:1a270f797dd736a4060c39"
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+window.db = firebase.firestore();
+window.auth = firebase.auth();
 
 const jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
 
