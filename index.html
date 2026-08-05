@@ -13,6 +13,10 @@
   <style>
     .container-type{display:inline-flex;align-items:center;gap:7px;margin:12px 0 4px;padding:7px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:13px}
     .status-message{padding:12px;border-radius:12px;background:#f8fafc;margin-top:10px}
+    .correction-zone{margin-top:10px;padding-top:10px;border-top:1px solid #dbe4df}
+    .correction-btn{width:100%;background:#fff;color:#475569;border:1px solid #cbd5e1}
+    .correction-btn:hover{background:#f8fafc}
+    button:disabled{opacity:.6;cursor:wait}
   </style>
 </head>
 <body>
@@ -73,9 +77,19 @@ function tuile(p,point){
   const statut=point?.statut||'afaire';
   const cls=statut==='fait'?'done':statut==='probleme'?'problem':'';
   const type=echapper(p.typeConteneur||'Type non précisé');
+
   const etat=point
-    ? `<div class="status-message"><strong>${statut==='fait'?'✅ Effectué':'⚠️ Problème signalé'}</strong><br><span class="meta">${echapper(point.heure||'')}${point.motif?' — '+echapper(point.motif):''}</span></div>`
-    : `<div class="buttons"><button class="ok" onclick="valider('${p.id}','fait')">✅ FAIT</button><button class="warning" onclick="valider('${p.id}','probleme')">⚠️ SIGNALER UN PROBLÈME</button></div>`;
+    ? `<div class="status-message">
+        <strong>${statut==='fait'?'✅ Effectué':'⚠️ Problème signalé'}</strong><br>
+        <span class="meta">${echapper(point.heure||'')}${point.motif?' — '+echapper(point.motif):''}</span>
+        <div class="correction-zone">
+          <button class="correction-btn" type="button" onclick="corrigerSaisie('${p.id}',this)">↩ Corriger ma saisie</button>
+        </div>
+      </div>`
+    : `<div class="buttons">
+        <button class="ok" type="button" onclick="valider('${p.id}','fait',this)">✅ FAIT</button>
+        <button class="warning" type="button" onclick="valider('${p.id}','probleme',this)">⚠️ SIGNALER UN PROBLÈME</button>
+      </div>`;
 
   return `<section class="tile ${cls}" id="tile-${p.id}">
     <h2>${echapper(p.chantierNom)}</h2>
@@ -87,11 +101,19 @@ function tuile(p,point){
   </section>`;
 }
 
-async function valider(id,statut){
+async function valider(id,statut,bouton){
   let motif='';
   if(statut==='probleme'){
-    motif=prompt('Quel est le problème ?')||'Problème non précisé';
+    const saisie=prompt('Quel est le problème ?');
+    if(saisie===null)return;
+    motif=saisie.trim()||'Problème non précisé';
   }
+
+  const boutons=[...document.querySelectorAll(`#tile-${id} button`)];
+  boutons.forEach(b=>b.disabled=true);
+  const ancienTexte=bouton.textContent;
+  bouton.textContent='Enregistrement…';
+
   const now=new Date();
   try{
     await db.collection('conteneurs_pointages').doc(idPointage(id)).set({
@@ -105,7 +127,27 @@ async function valider(id,statut){
     });
     await charger();
   }catch(e){
+    boutons.forEach(b=>b.disabled=false);
+    bouton.textContent=ancienTexte;
     alert(`Impossible d’enregistrer : ${e.message}`);
+  }
+}
+
+async function corrigerSaisie(id,bouton){
+  const confirmation=confirm('Annuler cette saisie pour pouvoir la refaire ?');
+  if(!confirmation)return;
+
+  bouton.disabled=true;
+  const ancienTexte=bouton.textContent;
+  bouton.textContent='Annulation…';
+
+  try{
+    await db.collection('conteneurs_pointages').doc(idPointage(id)).delete();
+    await charger();
+  }catch(e){
+    bouton.disabled=false;
+    bouton.textContent=ancienTexte;
+    alert(`Impossible de corriger la saisie : ${e.message}`);
   }
 }
 
