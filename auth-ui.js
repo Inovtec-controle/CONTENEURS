@@ -89,7 +89,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     await chargerScriptAdministration('remplacements.js');
     await chargerScriptAdministration('agent-chantiers.js');
-    await chargerScriptAdministration('retours-lendemain.js');
     if (window.auth?.currentUser && typeof charger === 'function') {
       await charger();
     }
