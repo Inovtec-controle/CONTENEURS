@@ -16,6 +16,7 @@
     .correction-zone{margin-top:10px;padding-top:10px;border-top:1px solid #dbe4df}
     .correction-btn{width:100%;background:#fff;color:#475569;border:1px solid #cbd5e1}
     .correction-btn:hover{background:#f8fafc}
+    .replacement-notice{margin:10px 0 2px;padding:9px 11px;border-radius:11px;background:#fff7ed;color:#9a3412;font-size:13px;font-weight:700}
     button:disabled{opacity:.6;cursor:wait}
   </style>
 </head>
@@ -37,6 +38,7 @@ const params=new URLSearchParams(location.search);
 const agent=(params.get('agent')||'').trim().toLowerCase();
 const label=document.getElementById('agentLabel');
 const tiles=document.getElementById('tiles');
+const plansAffiches=new Map();
 
 function echapper(texte=''){
   return String(texte).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -50,33 +52,50 @@ async function charger(){
     return;
   }
 
+  const aujourdHui=new Date();
   const [plansSnap,pointsSnap]=await Promise.all([
-    db.collection('conteneurs_plannings').where('agentId','==',agent).get(),
-    db.collection('conteneurs_pointages').where('date','==',dateISO()).get()
+    db.collection('conteneurs_plannings').get(),
+    db.collection('conteneurs_pointages').where('date','==',dateISO(aujourdHui)).get()
   ]);
 
   const points={};
   pointsSnap.forEach(d=>points[d.id]=d.data());
 
   const plans=[];
+  plansAffiches.clear();
   plansSnap.forEach(d=>{
     const p={id:d.id,...d.data()};
-    if(planningActifAujourdHui(p))plans.push(p);
+    const effectif=agentEffectifPourDate(p,aujourdHui);
+    if(planningActifAujourdHui(p,aujourdHui)&&effectif.agentId===agent){
+      p.effectif=effectif;
+      plans.push(p);
+      plansAffiches.set(p.id,p);
+    }
   });
   plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||''));
+
+  if(plans.length){
+    label.textContent=`Agent : ${plans[0].effectif.agentNom||agent}`;
+  }else{
+    label.textContent=`Agent : ${agent}`;
+  }
 
   if(!plans.length){
     tiles.innerHTML='<div class="card empty">Aucun passage prévu aujourd’hui.</div>';
     return;
   }
 
-  tiles.innerHTML=plans.map(p=>tuile(p,points[idPointage(p.id)])).join('');
+  tiles.innerHTML=plans.map(p=>tuile(p,points[idPointage(p.id,aujourdHui)])).join('');
 }
 
 function tuile(p,point){
   const statut=point?.statut||'afaire';
   const cls=statut==='fait'?'done':statut==='probleme'?'problem':'';
   const type=echapper(p.typeConteneur||'Type non précisé');
+  const effectif=p.effectif||agentEffectifPourDate(p);
+  const remplacement=effectif.estRemplacant
+    ? `<div class="replacement-notice">🔄 Remplacement temporaire de ${echapper(effectif.titulaireNom||effectif.titulaireId)}</div>`
+    : '';
 
   const etat=point
     ? `<div class="status-message">
@@ -94,6 +113,7 @@ function tuile(p,point){
   return `<section class="tile ${cls}" id="tile-${p.id}">
     <h2>${echapper(p.chantierNom)}</h2>
     <div class="address">${echapper(p.adresse||'')}</div>
+    ${remplacement}
     <div class="action ${p.action}">${p.action==='sortie'?'⬆️ SORTIE DES CONTENEURS':'⬇️ RENTRÉE DES CONTENEURS'}</div>
     <div class="container-type">🗑️ ${type}</div>
     <div class="meta">Prévu : ${echapper(p.heureDebut||'—')} à ${echapper(p.heureFin||'—')}</div>
@@ -115,10 +135,16 @@ async function valider(id,statut,bouton){
   bouton.textContent='Enregistrement…';
 
   const now=new Date();
+  const planning=plansAffiches.get(id);
+  const effectif=planning?.effectif||agentEffectifPourDate(planning||{},now);
   try{
-    await db.collection('conteneurs_pointages').doc(idPointage(id)).set({
+    await db.collection('conteneurs_pointages').doc(idPointage(id,now)).set({
       planningId:id,
-      agentId:agent,
+      agentId:effectif.agentId||agent,
+      agentNom:effectif.agentNom||agent,
+      titulaireAgentId:effectif.titulaireId||planning?.agentId||'',
+      titulaireAgentNom:effectif.titulaireNom||planning?.agentNom||'',
+      remplacementId:effectif.remplacementId||'',
       date:dateISO(now),
       heure:now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
       statut,
