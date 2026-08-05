@@ -68,15 +68,31 @@ async function deconnexion() {
   await auth.signOut();
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  if (/administration\.html$/.test(location.pathname)) {
+function chargerScriptAdministration(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[data-admin-module="${src}"]`)) {
+      resolve();
+      return;
+    }
     const script = document.createElement('script');
-    script.src = 'remplacements.js';
-    script.onload = () => {
-      if (window.auth?.currentUser && typeof charger === 'function') {
-        charger().catch(console.error);
-      }
-    };
+    script.src = src;
+    script.dataset.adminModule = src;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`Impossible de charger ${src}`));
     document.body.appendChild(script);
+  });
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  if (!/administration\.html$/.test(location.pathname)) return;
+
+  try {
+    await chargerScriptAdministration('remplacements.js');
+    await chargerScriptAdministration('retours-lendemain.js');
+    if (window.auth?.currentUser && typeof charger === 'function') {
+      await charger();
+    }
+  } catch (e) {
+    console.error(e);
   }
 });
