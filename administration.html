@@ -27,17 +27,18 @@
     .planning-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px;flex-wrap:wrap}
     .planning-header h3{margin:0}
     .passages-list{display:flex;flex-direction:column;gap:10px}
-    .passage-row{display:grid;grid-template-columns:1.1fr 1.1fr 1fr 1fr 1.4fr auto;gap:8px;align-items:center;padding:12px;border:1px solid #dbe4df;border-radius:14px;background:#f8fbf9}
+    .passage-row{display:grid;grid-template-columns:1fr 1fr 1.35fr .85fr .85fr 1.25fr auto;gap:8px;align-items:center;padding:12px;border:1px solid #dbe4df;border-radius:14px;background:#f8fbf9}
     .passage-row select,.passage-row input{width:100%;min-width:0}
     .remove-passage{white-space:nowrap}
     .form-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
     .hint{margin:6px 0 0;color:#66756d;font-size:12px}
-    @media(max-width:760px){
-      .site-form{grid-template-columns:1fr}
+    .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
+    @media(max-width:900px){
       .passage-row{grid-template-columns:1fr 1fr}
       .passage-row .full-mobile{grid-column:1/-1}
       .remove-passage{grid-column:1/-1}
     }
+    @media(max-width:760px){.site-form{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -55,7 +56,7 @@
 
     <section class="card">
       <h2>Créer un chantier et son planning</h2>
-      <p class="hint">Le nom du chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Ajoute ensuite autant de sorties et de rentrées que nécessaire.</p>
+      <p class="hint">Le chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Pour chaque passage, indique aussi le type de conteneur concerné.</p>
 
       <div class="site-form" style="margin-top:14px">
         <input id="chantier" placeholder="Nom du chantier">
@@ -63,6 +64,15 @@
         <input id="agentNom" placeholder="Nom de l’agent">
         <input id="agentId" placeholder="Identifiant agent, ex. michel">
       </div>
+
+      <datalist id="typesConteneurs">
+        <option value="Ordures ménagères">
+        <option value="Tri sélectif">
+        <option value="Verre">
+        <option value="Cartons">
+        <option value="Déchets verts">
+        <option value="Tous les conteneurs">
+      </datalist>
 
       <div class="planning-header">
         <h3>Passages du chantier</h3>
@@ -88,8 +98,8 @@
       <h2>Passages programmés</h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Chantier</th><th>Action</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr></thead>
-          <tbody id="liste"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
+          <thead><tr><th>Chantier</th><th>Action</th><th>Type</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr></thead>
+          <tbody id="liste"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -99,7 +109,6 @@
 const passagesZone=document.getElementById('passages');
 const enregistrerBtn=document.getElementById('enregistrerBtn');
 const message=document.getElementById('message');
-let compteurPassages=0;
 
 const joursOptions=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
 const frequencesOptions=[
@@ -136,17 +145,15 @@ function optionsHTML(options,selection){
 }
 
 function ajouterLignePassage(valeurs={}){
-  compteurPassages++;
-  const id=compteurPassages;
   const ligne=document.createElement('div');
   ligne.className='passage-row';
-  ligne.dataset.rowId=id;
   ligne.innerHTML=`
     <select class="passage-jour" aria-label="Jour">${optionsHTML(joursOptions,valeurs.jour||'lundi')}</select>
     <select class="passage-action" aria-label="Action">
       <option value="sortie"${valeurs.action==='sortie'?' selected':''}>Sortie</option>
       <option value="rentree"${valeurs.action==='rentree'?' selected':''}>Rentrée</option>
     </select>
+    <input class="passage-type full-mobile" list="typesConteneurs" value="${echapper(valeurs.typeConteneur||'')}" placeholder="Type : OM, tri, verre…" aria-label="Type de conteneur">
     <input class="passage-debut" type="time" value="${echapper(valeurs.heureDebut||'')}" aria-label="Heure de début">
     <input class="passage-fin" type="time" value="${echapper(valeurs.heureFin||'')}" aria-label="Heure de fin">
     <select class="passage-frequence full-mobile" aria-label="Fréquence">${optionsHTML(frequencesOptions,valeurs.frequence||'toutes')}</select>
@@ -166,6 +173,7 @@ function lirePassages(){
   return [...passagesZone.querySelectorAll('.passage-row')].map(ligne=>({
     jour:ligne.querySelector('.passage-jour').value,
     action:ligne.querySelector('.passage-action').value,
+    typeConteneur:ligne.querySelector('.passage-type').value.trim(),
     heureDebut:ligne.querySelector('.passage-debut').value,
     heureFin:ligne.querySelector('.passage-fin').value,
     frequence:ligne.querySelector('.passage-frequence').value
@@ -194,22 +202,18 @@ async function enregistrerChantier(){
     afficherMessage('Le nom du chantier et l’identifiant de l’agent sont obligatoires.','error');
     return;
   }
-  if(!passages.length){
-    afficherMessage('Ajoute au moins un passage.','error');
-    return;
-  }
 
   const doublons=new Set();
   for(const passage of passages){
-    if(!passage.jour||!passage.action){
-      afficherMessage('Chaque ligne doit contenir un jour et une action.','error');
+    if(!passage.jour||!passage.action||!passage.typeConteneur){
+      afficherMessage('Chaque passage doit contenir un jour, une action et un type de conteneur.','error');
       return;
     }
     if(passage.heureDebut&&passage.heureFin&&passage.heureFin<=passage.heureDebut){
       afficherMessage(`L’heure de fin doit être après l’heure de début pour le passage du ${passage.jour}.`,'error');
       return;
     }
-    const cle=[passage.jour,passage.action,passage.heureDebut,passage.heureFin,passage.frequence].join('|');
+    const cle=[passage.jour,passage.action,passage.typeConteneur.toLowerCase(),passage.heureDebut,passage.heureFin,passage.frequence].join('|');
     if(doublons.has(cle)){
       afficherMessage('Deux lignes de passage sont identiques. Supprime le doublon avant d’enregistrer.','error');
       return;
@@ -233,6 +237,7 @@ async function enregistrerChantier(){
         agentNom:agentNom||agentId,
         agentId,
         action:passage.action,
+        typeConteneur:passage.typeConteneur,
         jour:passage.jour,
         heureDebut:passage.heureDebut,
         heureFin:passage.heureFin,
@@ -247,10 +252,7 @@ async function enregistrerChantier(){
     await charger();
   }catch(e){
     console.error(e);
-    const aide=e.code==='permission-denied'
-      ? ' Accès refusé par Firebase : vérifie les règles Firestore et ta connexion.'
-      : '';
-    afficherMessage(`Impossible d’enregistrer : ${e.message}.${aide}`,'error');
+    afficherMessage(`Impossible d’enregistrer : ${e.message}`,'error');
   }finally{
     enregistrerBtn.disabled=false;
     enregistrerBtn.textContent='✅ Enregistrer le chantier et tous ses passages';
@@ -270,9 +272,12 @@ async function supprimer(id){
 
 async function copierLien(lien,bouton){
   try{await navigator.clipboard.writeText(lien);}catch(e){
-    const champ=document.createElement('textarea');champ.value=lien;document.body.appendChild(champ);champ.select();document.execCommand('copy');champ.remove();
+    const champ=document.createElement('textarea');
+    champ.value=lien;document.body.appendChild(champ);champ.select();document.execCommand('copy');champ.remove();
   }
-  const ancien=bouton.textContent;bouton.textContent='✅ Lien copié';setTimeout(()=>bouton.textContent=ancien,1800);
+  const ancien=bouton.textContent;
+  bouton.textContent='✅ Lien copié';
+  setTimeout(()=>bouton.textContent=ancien,1800);
 }
 
 function afficherLiensAgents(data){
@@ -280,51 +285,62 @@ function afficherLiensAgents(data){
   data.forEach(p=>{
     if(!p.agentId)return;
     const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0};
-    existant.nombre++;if(p.agentNom)existant.agentNom=p.agentNom;map.set(p.agentId,existant);
+    existant.nombre++;
+    if(p.agentNom)existant.agentNom=p.agentNom;
+    map.set(p.agentId,existant);
   });
+
   const agents=[...map.values()].sort((a,b)=>a.agentNom.localeCompare(b.agentNom,'fr'));
   const zone=document.getElementById('agents');
-  if(!agents.length){zone.innerHTML='<div class="empty">Ajoute une première programmation pour faire apparaître le lien de l’agent.</div>';return;}
+  if(!agents.length){
+    zone.innerHTML='<div class="empty">Ajoute une première programmation pour faire apparaître le lien de l’agent.</div>';
+    return;
+  }
+
   zone.innerHTML=agents.map(a=>{
     const lien=lienAgent(a.agentId);
-    return `<article class="agent-link-card"><h3>${echapper(a.agentNom)}</h3>
+    return `<article class="agent-link-card">
+      <h3>${echapper(a.agentNom)}</h3>
       <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''}</span></div>
       <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
-      <div class="agent-link-row"><button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
-      <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a></div></article>`;
+      <div class="agent-link-row">
+        <button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
+        <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a>
+      </div>
+    </article>`;
   }).join('');
+
   document.querySelectorAll('.copy-agent-link').forEach(b=>b.addEventListener('click',()=>copierLien(b.dataset.link,b)));
 }
 
 async function charger(){
   try{
     const snap=await db.collection('conteneurs_plannings').get();
-    const data=[];snap.forEach(d=>data.push({id:d.id,...d.data()}));
-    const ordreJours={lundi:1,mardi:2,mercredi:3,jeudi:4,vendredi:5,samedi:6,dimanche:7};
-    data.sort((a,b)=>
-      (a.chantierNom||'').localeCompare(b.chantierNom||'','fr')
-      ||(ordreJours[a.jour]||9)-(ordreJours[b.jour]||9)
-      ||(a.heureDebut||'').localeCompare(b.heureDebut||'')
-    );
+    const data=[];
+    snap.forEach(d=>data.push({id:d.id,...d.data()}));
+    data.sort((a,b)=>(a.chantierNom||'').localeCompare(b.chantierNom||'','fr')||(a.jour||'').localeCompare(b.jour||'','fr')||(a.heureDebut||'').localeCompare(b.heureDebut||''));
+
     afficherLiensAgents(data);
+
     document.getElementById('liste').innerHTML=data.map(p=>`<tr>
       <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
-      <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td><td>${echapper(p.jour||'')}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
+      <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
+      <td><span class="type-tag">${echapper(p.typeConteneur||'Non précisé')}</span></td>
+      <td>${echapper(p.jour||'')}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
       <td>${echapper(p.agentNom||p.agentId)}<br><span class="meta">${echapper(p.agentId||'')}</span></td>
       <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
-      <td><button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Aucune programmation.</td></tr>';
+      <td><button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button></td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty">Aucune programmation.</td></tr>';
   }catch(e){
     console.error(e);
     document.getElementById('agents').innerHTML=`<div class="empty">Erreur Firebase : ${echapper(e.message)}</div>`;
-    document.getElementById('liste').innerHTML=`<tr><td colspan="6" class="empty">Erreur Firebase : ${echapper(e.message)}</td></tr>`;
+    document.getElementById('liste').innerHTML=`<tr><td colspan="7" class="empty">Erreur Firebase : ${echapper(e.message)}</td></tr>`;
     afficherMessage(`Chargement impossible : ${e.message}`,'error');
   }
 }
 
 document.getElementById('ajouterPassageBtn').addEventListener('click',()=>ajouterLignePassage());
-document.getElementById('reinitialiserBtn').addEventListener('click',()=>{
-  if(confirm('Effacer les informations saisies dans le formulaire ?'))reinitialiserFormulaire();
-});
+document.getElementById('reinitialiserBtn').addEventListener('click',reinitialiserFormulaire);
 enregistrerBtn.addEventListener('click',enregistrerChantier);
 ajouterLignePassage();
 afficherConnexion(()=>charger());
