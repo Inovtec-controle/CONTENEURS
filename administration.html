@@ -1,7 +1,206 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Administration conteneurs</title><link rel="stylesheet" href="style.css"><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script><script src="firebase.js"></script></head><body><header class="topbar"><h1>⚙️ Administration</h1><p>Programmer une tuile par chantier</p></header><main class="container"><div class="nav"><a class="btn secondary" href="dashboard.html">Dashboard</a><a class="btn secondary" href="index.html">Vue agent</a></div><section class="card"><h2>Ajouter un passage récurrent</h2><div class="form-grid"><input id="chantier" placeholder="Nom du chantier"><input id="adresse" placeholder="Adresse"><input id="agentNom" placeholder="Nom de l’agent"><input id="agentId" placeholder="Identifiant agent, ex. michel"><select id="action"><option value="sortie">Sortie</option><option value="rentree">Rentrée</option></select><select id="jour"><option>lundi</option><option>mardi</option><option>mercredi</option><option>jeudi</option><option>vendredi</option><option>samedi</option><option>dimanche</option></select><input id="debut" type="time"><input id="fin" type="time"><select id="frequence"><option value="toutes">Toutes les semaines</option><option value="paire">Semaines paires</option><option value="impaire">Semaines impaires</option></select></div><p><button class="ok" onclick="ajouter()">＋ Ajouter la tuile</button></p></section><section class="card" style="margin-top:16px"><h2>Passages programmés</h2><div class="table-wrap"><table><thead><tr><th>Chantier</th><th>Action</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr></thead><tbody id="liste"></tbody></table></div></section></main><script>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Administration conteneurs</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="firebase.js"></script>
+  <style>
+    .agent-links-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
+    .agent-link-card{border:1px solid #dbe4df;border-radius:16px;padding:14px;background:#f8fbf9}
+    .agent-link-card h3{margin:0 0 4px;font-size:17px}
+    .agent-link-id{font-size:12px;color:#66756d;margin-bottom:10px}
+    .agent-link-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .agent-url{width:100%;padding:10px;border:1px solid #ccd8d1;border-radius:10px;background:white;font-size:12px}
+    .link-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+    .agent-count{display:inline-block;padding:3px 8px;border-radius:999px;background:#e5f6ea;color:#18713b;font-size:11px;font-weight:700}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>⚙️ Administration</h1>
+    <p>Programmer une tuile par chantier</p>
+  </header>
+
+  <main class="container">
+    <div class="nav">
+      <a class="btn secondary" href="dashboard.html">Dashboard</a>
+      <a class="btn secondary" href="index.html">Vue agent</a>
+    </div>
+
+    <section class="card">
+      <h2>Ajouter un passage récurrent</h2>
+      <div class="form-grid">
+        <input id="chantier" placeholder="Nom du chantier">
+        <input id="adresse" placeholder="Adresse">
+        <input id="agentNom" placeholder="Nom de l’agent">
+        <input id="agentId" placeholder="Identifiant agent, ex. michel">
+        <select id="action">
+          <option value="sortie">Sortie</option>
+          <option value="rentree">Rentrée</option>
+        </select>
+        <select id="jour">
+          <option>lundi</option><option>mardi</option><option>mercredi</option>
+          <option>jeudi</option><option>vendredi</option><option>samedi</option><option>dimanche</option>
+        </select>
+        <input id="debut" type="time">
+        <input id="fin" type="time">
+        <select id="frequence">
+          <option value="toutes">Toutes les semaines</option>
+          <option value="paire">Semaines paires</option>
+          <option value="impaire">Semaines impaires</option>
+        </select>
+      </div>
+      <p><button class="ok" onclick="ajouter()">＋ Ajouter la tuile</button></p>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>🔗 Liens des agents</h2>
+      <p class="meta">Chaque agent apparaît une seule fois, même s’il possède plusieurs chantiers.</p>
+      <div id="agents" class="agent-links-grid"></div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>Passages programmés</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Chantier</th><th>Action</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr>
+          </thead>
+          <tbody id="liste"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+<script>
 const ids=['chantier','adresse','agentNom','agentId','action','jour','debut','fin','frequence'];
-async function ajouter(){const v=Object.fromEntries(ids.map(id=>[id,document.getElementById(id).value.trim()]));if(!v.chantier||!v.agentId||!v.jour||!v.action){alert('Chantier, agent, jour et action sont obligatoires.');return;}await db.collection('conteneurs_plannings').add({chantierNom:v.chantier,adresse:v.adresse,agentNom:v.agentNom||v.agentId,agentId:v.agentId.toLowerCase(),action:v.action,jour:v.jour,heureDebut:v.debut,heureFin:v.fin,frequence:v.frequence,actif:true,createdAt:firebase.firestore.FieldValue.serverTimestamp()});document.getElementById('chantier').value='';document.getElementById('adresse').value='';charger();}
-async function supprimer(id){if(confirm('Supprimer cette programmation ?'))await db.collection('conteneurs_plannings').doc(id).delete();}
-async function charger(){const snap=await db.collection('conteneurs_plannings').orderBy('jour').get();const data=[];snap.forEach(d=>data.push({id:d.id,...d.data()}));document.getElementById('liste').innerHTML=data.map(p=>`<tr><td><strong>${p.chantierNom}</strong><br><span class="meta">${p.adresse||''}</span></td><td>${p.action==='sortie'?'Sortie':'Rentrée'}</td><td>${p.jour}<br><span class="meta">${p.frequence}</span></td><td>${p.agentNom||p.agentId}<br><span class="meta">Lien : ?agent=${p.agentId}</span></td><td>${p.heureDebut||'—'}–${p.heureFin||'—'}</td><td><button class="danger" onclick="supprimer('${p.id}')">Supprimer</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Aucune programmation.</td></tr>'}
-charger();
-</script></body></html>
+
+function nettoyerIdentifiant(valeur){
+  return valeur.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,'-')
+    .replace(/^-+|-+$/g,'');
+}
+
+function echapper(texte=''){
+  return String(texte).replace(/[&<>'"]/g,c=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
+  }[c]));
+}
+
+function lienAgent(agentId){
+  const base=location.href.replace(/administration\.html(?:\?.*)?$/,'');
+  return new URL(`?agent=${encodeURIComponent(agentId)}`,base).href;
+}
+
+async function ajouter(){
+  const v=Object.fromEntries(ids.map(id=>[id,document.getElementById(id).value.trim()]));
+  const agentId=nettoyerIdentifiant(v.agentId);
+  if(!v.chantier||!agentId||!v.jour||!v.action){
+    alert('Chantier, agent, jour et action sont obligatoires.');
+    return;
+  }
+  await db.collection('conteneurs_plannings').add({
+    chantierNom:v.chantier,
+    adresse:v.adresse,
+    agentNom:v.agentNom||agentId,
+    agentId,
+    action:v.action,
+    jour:v.jour,
+    heureDebut:v.debut,
+    heureFin:v.fin,
+    frequence:v.frequence,
+    actif:true,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp()
+  });
+  document.getElementById('chantier').value='';
+  document.getElementById('adresse').value='';
+  await charger();
+}
+
+async function supprimer(id){
+  if(confirm('Supprimer cette programmation ?')){
+    await db.collection('conteneurs_plannings').doc(id).delete();
+    await charger();
+  }
+}
+
+async function copierLien(lien,bouton){
+  try{
+    await navigator.clipboard.writeText(lien);
+  }catch(e){
+    const champ=document.createElement('textarea');
+    champ.value=lien;
+    document.body.appendChild(champ);
+    champ.select();
+    document.execCommand('copy');
+    champ.remove();
+  }
+  const ancien=bouton.textContent;
+  bouton.textContent='✅ Lien copié';
+  setTimeout(()=>bouton.textContent=ancien,1800);
+}
+
+function afficherLiensAgents(data){
+  const map=new Map();
+  data.forEach(p=>{
+    if(!p.agentId)return;
+    const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0};
+    existant.nombre++;
+    if(p.agentNom)existant.agentNom=p.agentNom;
+    map.set(p.agentId,existant);
+  });
+
+  const agents=[...map.values()].sort((a,b)=>a.agentNom.localeCompare(b.agentNom,'fr'));
+  const zone=document.getElementById('agents');
+  if(!agents.length){
+    zone.innerHTML='<div class="empty">Ajoute une première programmation pour faire apparaître le lien de l’agent.</div>';
+    return;
+  }
+
+  zone.innerHTML=agents.map(a=>{
+    const lien=lienAgent(a.agentId);
+    return `<article class="agent-link-card">
+      <h3>${echapper(a.agentNom)}</h3>
+      <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''}</span></div>
+      <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
+      <div class="agent-link-row">
+        <button class="ok copy-agent-link" data-link="${echapper(lien)}">📋 Copier le lien</button>
+        <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a>
+      </div>
+    </article>`;
+  }).join('');
+
+  document.querySelectorAll('.copy-agent-link').forEach(bouton=>{
+    bouton.addEventListener('click',()=>copierLien(bouton.dataset.link,bouton));
+  });
+}
+
+async function charger(){
+  const snap=await db.collection('conteneurs_plannings').get();
+  const data=[];
+  snap.forEach(d=>data.push({id:d.id,...d.data()}));
+  data.sort((a,b)=>(a.jour||'').localeCompare(b.jour||'','fr')||(a.heureDebut||'').localeCompare(b.heureDebut||''));
+
+  afficherLiensAgents(data);
+
+  document.getElementById('liste').innerHTML=data.map(p=>`<tr>
+    <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
+    <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
+    <td>${echapper(p.jour||'')}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
+    <td>${echapper(p.agentNom||p.agentId)}<br><span class="meta">${echapper(p.agentId||'')}</span></td>
+    <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
+    <td><button class="danger" onclick="supprimer('${p.id}')">Supprimer</button></td>
+  </tr>`).join('')||'<tr><td colspan="6" class="empty">Aucune programmation.</td></tr>';
+}
+
+charger().catch(e=>{
+  document.getElementById('agents').innerHTML=`<div class="empty">Erreur : ${echapper(e.message)}</div>`;
+});
+</script>
+</body>
+</html>
