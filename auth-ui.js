@@ -84,16 +84,28 @@ function chargerScriptAdministration(src) {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-  if (!/administration\.html$/.test(location.pathname)) return;
+  const chemin=location.pathname;
 
   try {
-    await chargerScriptAdministration('remplacements.js');
-    await chargerScriptAdministration('agent-chantiers.js');
-    await chargerScriptAdministration('rentree-auto-sortie.js');
-    await chargerScriptAdministration('edition-plannings.js');
-    await chargerScriptAdministration('rattrapage-rentrees-existantes.js');
-    if (window.auth?.currentUser && typeof charger === 'function') {
-      await charger();
+    if (/administration\.html$/.test(chemin)) {
+      await chargerScriptAdministration('remplacements.js');
+      await chargerScriptAdministration('agent-chantiers.js');
+      await chargerScriptAdministration('rentree-auto-sortie.js');
+      await chargerScriptAdministration('edition-plannings.js');
+      await chargerScriptAdministration('rattrapage-rentrees-existantes.js');
+      if (window.auth?.currentUser && typeof charger === 'function') {
+        await charger();
+      }
+      return;
+    }
+
+    if (/dashboard\.html$/.test(chemin)) {
+      await chargerScriptAdministration('dashboard-photos.js');
+      return;
+    }
+
+    if (chemin.endsWith('/') || /index\.html$/.test(chemin)) {
+      await chargerScriptAdministration('photos-pointages-agent.js');
     }
   } catch (e) {
     console.error(e);
