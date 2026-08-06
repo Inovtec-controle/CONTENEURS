@@ -15,6 +15,11 @@
     dimanche:'lundi'
   };
 
+  const horairesDefaut={
+    sortie:{debut:'15:00',fin:'19:30'},
+    rentree:{debut:'08:00',fin:'12:00'}
+  };
+
   const note=document.createElement('div');
   note.style.marginTop='10px';
   note.style.padding='10px 12px';
@@ -23,8 +28,58 @@
   note.style.color='#047857';
   note.style.fontSize='13px';
   note.style.fontWeight='700';
-  note.textContent='↩️ Chaque sortie enregistrée crée automatiquement une rentrée le lendemain. La rentrée pourra ensuite être modifiée normalement dans la liste.';
+  note.textContent='↩️ Horaires proposés automatiquement : sorties de 15h00 à 19h30 et rentrées de 08h00 à 12h00. Tous les horaires restent modifiables.';
   bouton.closest('.form-actions')?.after(note);
+
+  function installerHorairesSurLigne(ligne){
+    if(!ligne)return;
+    const action=ligne.querySelector('.passage-action');
+    const debut=ligne.querySelector('.passage-debut');
+    const fin=ligne.querySelector('.passage-fin');
+    if(!action||!debut||!fin)return;
+
+    const plage=horairesDefaut[action.value]||horairesDefaut.sortie;
+    if(!debut.value&&!fin.value){
+      debut.value=plage.debut;
+      fin.value=plage.fin;
+    }
+    ligne.dataset.horaireAction=action.value;
+
+    if(ligne.dataset.horairesDefautInstalles==='oui')return;
+    ligne.dataset.horairesDefautInstalles='oui';
+
+    action.addEventListener('change',()=>{
+      const ancienneAction=ligne.dataset.horaireAction||'sortie';
+      const anciennePlage=horairesDefaut[ancienneAction]||horairesDefaut.sortie;
+      const nouvellePlage=horairesDefaut[action.value]||horairesDefaut.sortie;
+      const horairesEncoreAutomatiques=
+        (!debut.value&&!fin.value)
+        ||(debut.value===anciennePlage.debut&&fin.value===anciennePlage.fin);
+
+      if(horairesEncoreAutomatiques){
+        debut.value=nouvellePlage.debut;
+        fin.value=nouvellePlage.fin;
+      }
+      ligne.dataset.horaireAction=action.value;
+    });
+  }
+
+  const ajouterLignePassageBase=ajouterLignePassage;
+  ajouterLignePassage=function(valeurs={}){
+    const valeursCompletees={...valeurs};
+    const action=valeursCompletees.action||'sortie';
+    const plage=horairesDefaut[action]||horairesDefaut.sortie;
+
+    if(valeursCompletees.heureDebut===undefined&&valeursCompletees.heureFin===undefined){
+      valeursCompletees.heureDebut=plage.debut;
+      valeursCompletees.heureFin=plage.fin;
+    }
+
+    ajouterLignePassageBase(valeursCompletees);
+    installerHorairesSurLigne(passagesZone.lastElementChild);
+  };
+
+  passagesZone.querySelectorAll('.passage-row').forEach(installerHorairesSurLigne);
 
   function frequenceDuLendemain(passage){
     const frequence=passage.frequence||'toutes';
@@ -131,8 +186,8 @@
           jour:joursSuivants[passage.jour],
           action:'rentree',
           typeConteneur:passage.typeConteneur,
-          heureDebut:'',
-          heureFin:'',
+          heureDebut:horairesDefaut.rentree.debut,
+          heureFin:horairesDefaut.rentree.fin,
           frequence:frequenceDuLendemain(passage)
         };
 
