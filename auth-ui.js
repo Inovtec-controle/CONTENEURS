@@ -91,6 +91,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await chargerScriptAdministration('agent-chantiers.js');
     await chargerScriptAdministration('rentree-auto-sortie.js');
     await chargerScriptAdministration('edition-plannings.js');
+    await chargerScriptAdministration('rattrapage-rentrees-existantes.js');
     if (window.auth?.currentUser && typeof charger === 'function') {
       await charger();
     }
