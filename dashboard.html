@@ -8,7 +8,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js"></script>
+  <script src="firebase.js?v=20260817-infosdays1"></script>
   <script src="auth-ui.js"></script>
   <style>
     .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
@@ -49,7 +49,7 @@
         <button id="jourSuivant" class="btn secondary" type="button">Jour suivant →</button>
       </div>
       <div id="dateLibelle" class="selected-date"></div>
-      <p class="history-note">Pour une date passée, une prestation sans pointage apparaît automatiquement comme « Non effectuée ».</p>
+      <p class="history-note">Les jours de passage viennent automatiquement d’Infos chantier lorsqu’ils y sont renseignés. Pour une date passée, une prestation sans pointage apparaît comme « Non effectuée ».</p>
     </section>
 
     <div id="stats" class="stats"></div>
@@ -136,6 +136,7 @@ async function charger(){
 
   rows.innerHTML=plans.map(p=>{
     const point=points[idPointage(p.id,dateSelection)];
+    const typeEffectif=typeof typeConteneurEffectif==='function'?typeConteneurEffectif(p,dateSelection):(p.typeConteneur||'Non précisé');
     let badge='';
     let heure='—';
     let ligneClasse='';
@@ -164,7 +165,7 @@ async function charger(){
     return `<tr class="${ligneClasse}">
       <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
       <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
-      <td><span class="type-tag">${echapper(p.typeConteneur||'Non précisé')}</span></td>
+      <td><span class="type-tag">${echapper(typeEffectif||'Non précisé')}</span></td>
       <td>${echapper(p.agentNom||p.agentId)}</td>
       <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
       <td>${badge}${point?.motif?`<br><span class="meta">${echapper(point.motif)}</span>`:''}</td>
