@@ -13,6 +13,13 @@ window.auth = firebase.auth();
 
 const jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
 const joursOrdreInfos = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+const frequencesInfosLibelles = {toutes:"Toutes les semaines",paire:"Semaines paires",impaire:"Semaines impaires"};
+const champsConteneursInfos = {
+  sortieOM:{action:"sortie",type:"OM",prop:"frequenceSortieOM"},
+  rentreeOM:{action:"rentree",type:"OM",prop:"frequenceRentreeOM"},
+  sortieTRI:{action:"sortie",type:"TRI",prop:"frequenceSortieTRI"},
+  rentreeTRI:{action:"rentree",type:"TRI",prop:"frequenceRentreeTRI"}
+};
 
 function dateISO(date = new Date()) {
   const y = date.getFullYear();
@@ -47,6 +54,19 @@ function joursDepuisValeurInfos(valeur) {
   return joursOrdreInfos.filter(j => alias[j].some(a => new RegExp(`(^|[^a-z])${a}([^a-z]|$)`).test(texte)));
 }
 
+function frequenceValide(valeur) {
+  const v=String(valeur||"");
+  return ["toutes","paire","impaire"].includes(v)?v:"";
+}
+
+function frequenceActivePourDate(frequence,date) {
+  const f=frequenceValide(frequence)||"toutes";
+  const semaine=numeroSemaine(date);
+  if(f==="paire")return semaine%2===0;
+  if(f==="impaire")return semaine%2!==0;
+  return true;
+}
+
 let chantiersInfos = [];
 let arretChantiersInfos = null;
 let minuterieRafraichissementInfos = null;
@@ -79,50 +99,73 @@ function chantierInfosPourPlanning(planning) {
     || null;
 }
 
+function idsChampsPourPlanning(planning) {
+  const action=planning?.action==="rentree"?"rentree":"sortie";
+  const type=String(planning?.typeConteneur||"OM").toUpperCase();
+  const ids=[];
+  if(type==="OM"||type==="OM/TRI")ids.push(`${action}OM`);
+  if(type==="TRI"||type==="OM/TRI")ids.push(`${action}TRI`);
+  return ids;
+}
+
+function frequenceInfosPourChamp(site,cle) {
+  const meta=champsConteneursInfos[cle];
+  if(!site||!meta)return"";
+  return frequenceValide(site[meta.prop])
+    ||frequenceValide(site.conteneursFrequencesV1?.[cle])
+    ||frequenceValide(site.conteneursPlanningV1?.frequences?.[cle])
+    ||"";
+}
+
+function champInfosActifPourDate(site,cle,date,frequenceSecours="toutes") {
+  const info=planningInfosDuChantier(site);
+  if(!info?.actif)return false;
+  const jour=jours[date.getDay()];
+  if(!(info[cle]||[]).includes(jour))return false;
+  return frequenceActivePourDate(frequenceInfosPourChamp(site,cle)||frequenceSecours,date);
+}
+
 function joursInfosPourPlanning(planning) {
   const site = chantierInfosPourPlanning(planning);
   const info = planningInfosDuChantier(site);
   if (!info?.actif) return null;
-  const action = planning.action === "rentree" ? "rentree" : "sortie";
-  const type = String(planning.typeConteneur || "OM").toUpperCase();
-  const om = info[`${action}OM`] || [];
-  const tri = info[`${action}TRI`] || [];
-  if (type === "OM") return om.slice();
-  if (type === "TRI") return tri.slice();
-  if (type === "OM/TRI") return joursOrdreInfos.filter(j => om.includes(j) || tri.includes(j));
-  return null;
+  const ids=idsChampsPourPlanning(planning);
+  const set=new Set();ids.forEach(id=>(info[id]||[]).forEach(j=>set.add(j)));
+  return joursOrdreInfos.filter(j=>set.has(j));
+}
+
+function frequenceInfosPourPlanning(planning) {
+  const site=chantierInfosPourPlanning(planning);
+  const info=planningInfosDuChantier(site);
+  if(!info?.actif)return"";
+  const vals=[...new Set(idsChampsPourPlanning(planning).map(id=>frequenceInfosPourChamp(site,id)).filter(Boolean))];
+  return vals.length===1?vals[0]:vals.length>1?"mixte":"";
 }
 
 function frequenceValidePourDate(planning, date) {
-  const semaine = numeroSemaine(date);
-  if (planning.frequence === "paire" && semaine % 2 !== 0) return false;
-  if (planning.frequence === "impaire" && semaine % 2 === 0) return false;
-  return true;
+  return frequenceActivePourDate(planning?.frequence,date);
 }
 
 function planningActifAujourdHui(planning, date = new Date()) {
   if (!planning.actif) return false;
-  const jour = jours[date.getDay()];
-  const joursInfos = joursInfosPourPlanning(planning);
-  if (joursInfos) {
-    if (!joursInfos.includes(jour)) return false;
-  } else if (planning.jour !== jour) {
-    return false;
+  const site=chantierInfosPourPlanning(planning),info=planningInfosDuChantier(site);
+  if(info?.actif){
+    const secours=frequenceValide(planning.frequence)||"toutes";
+    return idsChampsPourPlanning(planning).some(id=>champInfosActifPourDate(site,id,date,secours));
   }
+  if (planning.jour !== jours[date.getDay()]) return false;
   return frequenceValidePourDate(planning, date);
 }
 
 function typeConteneurEffectif(planning, date = new Date()) {
-  const type = String(planning?.typeConteneur || "");
-  if (type !== "OM/TRI") return type;
+  const type = String(planning?.typeConteneur || "").toUpperCase();
   const site = chantierInfosPourPlanning(planning);
   const info = planningInfosDuChantier(site);
   if (!info?.actif) return type;
-  const action = planning.action === "rentree" ? "rentree" : "sortie";
-  const jour = jours[date.getDay()];
-  const om = (info[`${action}OM`] || []).includes(jour);
-  const tri = (info[`${action}TRI`] || []).includes(jour);
-  return om && tri ? "OM/TRI" : om ? "OM" : tri ? "TRI" : type;
+  const action=planning?.action==="rentree"?"rentree":"sortie",secours=frequenceValide(planning?.frequence)||"toutes";
+  const om=(type==="OM"||type==="OM/TRI")&&champInfosActifPourDate(site,`${action}OM`,date,secours);
+  const tri=(type==="TRI"||type==="OM/TRI")&&champInfosActifPourDate(site,`${action}TRI`,date,secours);
+  return om&&tri?"OM/TRI":om?"OM":tri?"TRI":type;
 }
 
 function dedoublonnerPlanningsActifsInfos(plans, date = new Date()) {
@@ -136,7 +179,7 @@ function dedoublonnerPlanningsActifsInfos(plans, date = new Date()) {
     const site = chantierInfosPourPlanning(p);
     const siteCle = String(site?.id || `${normaliserLienInfos(p.chantierNom)}|${normaliserLienInfos(p.adresse)}`);
     const type = typeConteneurEffectif(p, date) || p.typeConteneur || "";
-    const cle = [siteCle, p.action || "", type, p.agentId || "", p.frequence || "toutes"].join("|");
+    const cle = [siteCle, p.action || "", type, p.agentId || "", "infos"].join("|");
     const groupe = groupes.get(cle) || [];
     groupe.push(p);
     groupes.set(cle, groupe);
@@ -155,6 +198,13 @@ function libelleJoursInfosPlanning(planning) {
   if (!liste) return planning?.jour || "";
   const courts = {lundi:"Lun",mardi:"Mar",mercredi:"Mer",jeudi:"Jeu",vendredi:"Ven",samedi:"Sam",dimanche:"Dim"};
   return liste.length ? liste.map(j => courts[j] || j).join(" · ") : "Aucun jour";
+}
+
+function libelleFrequenceInfosPlanning(planning) {
+  const f=frequenceInfosPourPlanning(planning);
+  if(f==="mixte")return"Fréquence selon OM / TRI";
+  const effectif=f||frequenceValide(planning?.frequence)||"toutes";
+  return frequencesInfosLibelles[effectif]||effectif;
 }
 
 function programmerRafraichissementInfos() {
@@ -186,7 +236,10 @@ window.InovtecConteneursInfos = {
   chantierInfosPourPlanning,
   planningInfosDuChantier,
   joursInfosPourPlanning,
+  frequenceInfosPourChamp,
+  frequenceInfosPourPlanning,
   libelleJoursInfosPlanning,
+  libelleFrequenceInfosPlanning,
   typeConteneurEffectif,
   dedoublonnerPlanningsActifsInfos
 };
