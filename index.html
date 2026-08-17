@@ -8,7 +8,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js"></script>
+  <script src="firebase.js?v=20260817-infosdays1"></script>
   <script src="auth-ui.js"></script>
   <style>
     .container-type{display:inline-flex;align-items:center;gap:7px;margin:12px 0 4px;padding:7px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:13px}
@@ -85,14 +85,15 @@ async function charger(){
     return;
   }
 
-  tiles.innerHTML=plans.map(p=>tuile(p,points[idPointage(p.id,aujourdHui)])).join('');
+  tiles.innerHTML=plans.map(p=>tuile(p,points[idPointage(p.id,aujourdHui)],aujourdHui)).join('');
 }
 
-function tuile(p,point){
+function tuile(p,point,date=new Date()){
   const statut=point?.statut||'afaire';
   const cls=statut==='fait'?'done':statut==='probleme'?'problem':'';
-  const type=echapper(p.typeConteneur||'Type non précisé');
-  const effectif=p.effectif||agentEffectifPourDate(p);
+  const typeEffectif=typeof typeConteneurEffectif==='function'?typeConteneurEffectif(p,date):(p.typeConteneur||'Type non précisé');
+  const type=echapper(typeEffectif||'Type non précisé');
+  const effectif=p.effectif||agentEffectifPourDate(p,date);
   const remplacement=effectif.estRemplacant
     ? `<div class="replacement-notice">🔄 Remplacement temporaire de ${echapper(effectif.titulaireNom||effectif.titulaireId)}</div>`
     : '';
