@@ -14,6 +14,13 @@ function nettoyerIdentifiantCompte(valeur = '') {
     .replace(/^-+|-+$/g, '');
 }
 
+const DATE_ACTIVATION_COMPTES_AGENTS = Date.parse('2026-08-10T13:46:22Z');
+
+function estCompteHistorique(user) {
+  const creation = Date.parse(user?.metadata?.creationTime || '');
+  return Number.isFinite(creation) && creation < DATE_ACTIVATION_COMPTES_AGENTS;
+}
+
 function afficherConnexion(onReady) {
   const pageAgent = estVueAgent();
   const agentLien = identifiantAgentDuLien();
@@ -94,6 +101,16 @@ function afficherConnexion(onReady) {
     messageCompte = message;
     error.style.color = couleur;
     error.textContent = message;
+  }
+
+  function lancerUtilisateur(user) {
+    messageCompte = '';
+    error.textContent = '';
+    overlay.style.display = 'none';
+    if (utilisateurLance !== user.uid) {
+      utilisateurLance = user.uid;
+      onReady(user);
+    }
   }
 
   form.addEventListener('submit', async (event) => {
@@ -202,6 +219,8 @@ function afficherConnexion(onReady) {
       return;
     }
 
+    const compteHistorique = estCompteHistorique(user);
+
     try {
       const compteSnap = await db.collection('conteneurs_comptes').doc(user.uid).get();
       if (compteSnap.exists) {
@@ -248,18 +267,25 @@ function afficherConnexion(onReady) {
             return;
           }
         }
+      } else if (!compteHistorique) {
+        afficherMessageCompte('⛔ Ce compte récent n’est pas encore enregistré ou validé. Contacte ton responsable.', '#b91c1c');
+        await auth.signOut();
+        return;
       }
 
-      messageCompte = '';
-      error.textContent = '';
-      overlay.style.display = 'none';
-      if (utilisateurLance !== user.uid) {
-        utilisateurLance = user.uid;
-        onReady(user);
-      }
+      lancerUtilisateur(user);
     } catch (e) {
-      console.error(e);
-      afficherMessageCompte(`Connexion impossible : ${e.message}`, '#b91c1c');
+      console.error('Vérification du compte impossible :', e);
+
+      // Compatibilité avec les comptes Firebase déjà utilisés avant l'ajout
+      // du système de validation des comptes agents. Une règle Firestore trop
+      // restrictive sur la nouvelle collection ne doit pas bloquer ces comptes.
+      if (compteHistorique) {
+        lancerUtilisateur(user);
+        return;
+      }
+
+      afficherMessageCompte('Connexion impossible : la validation de ce compte récent ne peut pas être vérifiée. Contacte ton responsable.', '#b91c1c');
       try { await auth.signOut(); } catch (_) {}
     }
   });
