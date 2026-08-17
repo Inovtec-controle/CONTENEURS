@@ -125,6 +125,31 @@ function typeConteneurEffectif(planning, date = new Date()) {
   return om && tri ? "OM/TRI" : om ? "OM" : tri ? "TRI" : type;
 }
 
+function dedoublonnerPlanningsActifsInfos(plans, date = new Date()) {
+  const liste = Array.isArray(plans) ? plans : [];
+  const jour = jours[date.getDay()];
+  const resultat = [];
+  const groupes = new Map();
+  liste.forEach(p => {
+    const lies = joursInfosPourPlanning(p);
+    if (!lies) { resultat.push(p); return; }
+    const site = chantierInfosPourPlanning(p);
+    const siteCle = String(site?.id || `${normaliserLienInfos(p.chantierNom)}|${normaliserLienInfos(p.adresse)}`);
+    const type = typeConteneurEffectif(p, date) || p.typeConteneur || "";
+    const cle = [siteCle, p.action || "", type, p.agentId || "", p.frequence || "toutes"].join("|");
+    const groupe = groupes.get(cle) || [];
+    groupe.push(p);
+    groupes.set(cle, groupe);
+  });
+  groupes.forEach(groupe => {
+    const correspondJour = groupe.filter(p => String(p.jour || "") === jour);
+    const candidats = correspondJour.length ? correspondJour : groupe;
+    candidats.sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
+    if (candidats[0]) resultat.push(candidats[0]);
+  });
+  return resultat;
+}
+
 function libelleJoursInfosPlanning(planning) {
   const liste = joursInfosPourPlanning(planning);
   if (!liste) return planning?.jour || "";
@@ -162,7 +187,8 @@ window.InovtecConteneursInfos = {
   planningInfosDuChantier,
   joursInfosPourPlanning,
   libelleJoursInfosPlanning,
-  typeConteneurEffectif
+  typeConteneurEffectif,
+  dedoublonnerPlanningsActifsInfos
 };
 
 function remplacementPourDate(planning, date = new Date()) {
