@@ -8,7 +8,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js"></script>
+  <script src="firebase.js?v=20260817-infosdays1"></script>
   <script src="auth-ui.js"></script>
   <style>
     .agent-links-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
@@ -32,7 +32,9 @@
     .remove-passage{white-space:nowrap}
     .form-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
     .hint{margin:6px 0 0;color:#66756d;font-size:12px}
+    .source-note{margin:12px 0 0;padding:11px 13px;border-radius:12px;background:#ecfdf5;color:#047857;font-size:12px;font-weight:700;line-height:1.45}
     .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
+    .source-tag{display:inline-block;margin-top:4px;padding:2px 7px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:10px;font-weight:700}
     @media(max-width:760px){
       .site-form{grid-template-columns:1fr}
       .passage-row{grid-template-columns:1fr 1fr}
@@ -57,6 +59,7 @@
     <section class="card">
       <h2>Créer un chantier et son planning</h2>
       <p class="hint">Le chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Pour chaque passage, choisis OM, TRI ou OM/TRI.</p>
+      <div class="source-note">📅 Pour les chantiers renseignés dans Inovtec Dashboard → Infos chantier, les jours de Sortie OM, Rentrée OM, Sortie TRI et Rentrée TRI sont désormais pilotés depuis cette fiche. Ici restent les agents, horaires, fréquences et remplacements.</div>
 
       <div class="site-form" style="margin-top:14px">
         <input id="chantier" placeholder="Nom du chantier">
@@ -316,14 +319,19 @@ async function charger(){
       ||(a.heureDebut||'').localeCompare(b.heureDebut||'')
     );
     afficherLiensAgents(data);
-    document.getElementById('liste').innerHTML=data.map(p=>`<tr>
+    document.getElementById('liste').innerHTML=data.map(p=>{
+      const joursLies=window.InovtecConteneursInfos?.joursInfosPourPlanning?.(p);
+      const jourAffiche=joursLies?window.InovtecConteneursInfos.libelleJoursInfosPlanning(p):(p.jour||'');
+      const source=joursLies?'<br><span class="source-tag">Infos chantier</span>':'';
+      return `<tr>
       <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
       <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
       <td><span class="type-tag">${echapper(p.typeConteneur||'Non précisé')}</span></td>
-      <td>${echapper(p.jour||'')}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
+      <td>${echapper(jourAffiche)}${source}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
       <td>${echapper(p.agentNom||p.agentId)}<br><span class="meta">${echapper(p.agentId||'')}</span></td>
       <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
-      <td><button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">Aucune programmation.</td></tr>';
+      <td><button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button></td></tr>`;
+    }).join('')||'<tr><td colspan="7" class="empty">Aucune programmation.</td></tr>';
   }catch(e){
     console.error(e);
     document.getElementById('agents').innerHTML=`<div class="empty">Erreur Firebase : ${echapper(e.message)}</div>`;
