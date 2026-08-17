@@ -8,7 +8,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260817-infosdays1"></script>
+  <script src="firebase.js?v=20260817-infosdays2"></script>
   <script src="auth-ui.js"></script>
   <style>
     .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
@@ -121,11 +121,12 @@ async function charger(){
   const points={};
   pts.forEach(d=>points[d.id]=d.data());
 
-  const plans=[];
+  const candidats=[];
   ps.forEach(d=>{
     const p={id:d.id,...d.data()};
-    if(planningValablePourDate(p,dateSelection))plans.push(p);
+    if(planningValablePourDate(p,dateSelection))candidats.push(p);
   });
+  const plans=typeof dedoublonnerPlanningsActifsInfos==='function'?dedoublonnerPlanningsActifsInfos(candidats,dateSelection):candidats;
   plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||'')||(a.chantierNom||'').localeCompare(b.chantierNom||'','fr'));
 
   let fait=0;
