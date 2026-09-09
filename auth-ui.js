@@ -25,6 +25,7 @@ function afficherConnexion(onReady) {
   const pageAgent = estVueAgent();
   const agentLien = identifiantAgentDuLien();
   let creationEnCours = false;
+  let changementMotDePasseEnCours = false;
   let messageCompte = '';
   let utilisateurLance = null;
 
@@ -41,7 +42,16 @@ function afficherConnexion(onReady) {
         <input id="authPassword" type="password" autocomplete="current-password" placeholder="Mot de passe" required style="padding:12px;border:1px solid #cbd5e1;border-radius:12px;font-size:15px">
         <button id="authSubmit" type="submit" class="ok" style="width:100%;padding:12px">Se connecter</button>
         <button id="authForgot" type="button" style="border:0;background:transparent;color:#2563eb;font-size:13px;font-weight:700;padding:4px 8px;cursor:pointer">Mot de passe oublié ?</button>
+        <button id="authChangeToggle" type="button" style="border:0;background:transparent;color:#0f766e;font-size:13px;font-weight:700;padding:4px 8px;cursor:pointer">Changer mon mot de passe sans e-mail</button>
         <div id="authError" style="min-height:18px;color:#b91c1c;font-size:12px;text-align:center"></div>
+      </form>
+
+      <form id="authChangeForm" style="display:none;gap:10px;margin-top:12px;padding-top:14px;border-top:1px solid #e2e8f0">
+        <div style="color:#475569;font-size:12px;line-height:1.45;text-align:center">Utilise l’adresse e-mail et le mot de passe actuel saisis ci-dessus, puis choisis le nouveau mot de passe.</div>
+        <input id="authNewPassword" type="password" autocomplete="new-password" minlength="6" placeholder="Nouveau mot de passe (6 caractères minimum)" required style="padding:12px;border:1px solid #cbd5e1;border-radius:12px;font-size:15px">
+        <input id="authNewPasswordConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="Confirmer le nouveau mot de passe" required style="padding:12px;border:1px solid #cbd5e1;border-radius:12px;font-size:15px">
+        <button id="authChangeSubmit" type="submit" class="ok" style="width:100%;padding:12px">Changer mon mot de passe</button>
+        <div id="authChangeError" style="min-height:18px;color:#b91c1c;font-size:12px;text-align:center"></div>
       </form>
 
       ${pageAgent ? `
@@ -72,6 +82,10 @@ function afficherConnexion(onReady) {
   const form = overlay.querySelector('#authForm');
   const submit = overlay.querySelector('#authSubmit');
   const forgot = overlay.querySelector('#authForgot');
+  const changeToggle = overlay.querySelector('#authChangeToggle');
+  const changeForm = overlay.querySelector('#authChangeForm');
+  const changeSubmit = overlay.querySelector('#authChangeSubmit');
+  const changeError = overlay.querySelector('#authChangeError');
   const error = overlay.querySelector('#authError');
   const createToggle = overlay.querySelector('#authCreateToggle');
   const createForm = overlay.querySelector('#authCreateForm');
@@ -159,15 +173,78 @@ function afficherConnexion(onReady) {
     forgot.disabled = true;
     forgot.textContent = 'Envoi du lien…';
     try {
+      auth.languageCode = 'fr';
       await auth.sendPasswordResetEmail(email);
       error.style.color = '#047857';
-      error.textContent = `✅ Un e-mail de réinitialisation a été envoyé à ${email}. Pense à vérifier les indésirables.`;
+      error.textContent = `✅ Demande envoyée à Firebase pour ${email}. Si cette adresse correspond bien au compte, le lien arrive par e-mail. Vérifie aussi les indésirables.`;
     } catch (e) {
       error.style.color = '#b91c1c';
       error.textContent = messageErreurReset(e);
     } finally {
       forgot.disabled = false;
       forgot.textContent = 'Mot de passe oublié ?';
+    }
+  });
+
+  changeToggle.addEventListener('click', () => {
+    const ouvert = changeForm.style.display === 'grid';
+    changeForm.style.display = ouvert ? 'none' : 'grid';
+    changeToggle.textContent = ouvert ? 'Changer mon mot de passe sans e-mail' : 'Fermer le changement de mot de passe';
+    changeError.textContent = '';
+    if (!ouvert) overlay.querySelector('#authNewPassword')?.focus();
+  });
+
+  changeForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    changeError.textContent = '';
+    error.textContent = '';
+
+    const email = overlay.querySelector('#authEmail').value.trim().toLowerCase();
+    const ancienMotDePasse = overlay.querySelector('#authPassword').value;
+    const nouveauMotDePasse = overlay.querySelector('#authNewPassword').value;
+    const confirmation = overlay.querySelector('#authNewPasswordConfirm').value;
+
+    if (!email || !ancienMotDePasse) {
+      changeError.textContent = 'Renseigne d’abord ton adresse e-mail et ton mot de passe actuel dans la zone Connexion.';
+      return;
+    }
+    if (nouveauMotDePasse.length < 6) {
+      changeError.textContent = 'Le nouveau mot de passe doit contenir au moins 6 caractères.';
+      return;
+    }
+    if (nouveauMotDePasse !== confirmation) {
+      changeError.textContent = 'Les deux nouveaux mots de passe ne correspondent pas.';
+      return;
+    }
+    if (nouveauMotDePasse === ancienMotDePasse) {
+      changeError.textContent = 'Choisis un nouveau mot de passe différent de l’ancien.';
+      return;
+    }
+
+    changementMotDePasseEnCours = true;
+    changeSubmit.disabled = true;
+    changeSubmit.textContent = 'Vérification…';
+
+    try {
+      await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+      const credential = await auth.signInWithEmailAndPassword(email, ancienMotDePasse);
+      changeSubmit.textContent = 'Modification…';
+      await credential.user.updatePassword(nouveauMotDePasse);
+      await auth.signOut();
+
+      overlay.querySelector('#authPassword').value = '';
+      changeForm.reset();
+      changeForm.style.display = 'none';
+      changeToggle.textContent = 'Changer mon mot de passe sans e-mail';
+      error.style.color = '#047857';
+      error.textContent = '✅ Mot de passe modifié. Tu peux maintenant te connecter avec le nouveau mot de passe.';
+    } catch (e) {
+      changeError.textContent = messageErreurConnexion(e);
+      try { await auth.signOut(); } catch (_) {}
+    } finally {
+      changementMotDePasseEnCours = false;
+      changeSubmit.disabled = false;
+      changeSubmit.textContent = 'Changer mon mot de passe';
     }
   });
 
@@ -245,7 +322,7 @@ function afficherConnexion(onReady) {
   }
 
   auth.onAuthStateChanged(async (user) => {
-    if (creationEnCours) return;
+    if (creationEnCours || changementMotDePasseEnCours) return;
 
     if (!user) {
       utilisateurLance = null;
