@@ -221,6 +221,14 @@ function afficherConnexion(onReady) {
 
     const compteHistorique = estCompteHistorique(user);
 
+    // Les comptes créés avant la mise en place des comptes agents étaient les
+    // comptes d'administration existants. Ils doivent pouvoir continuer à se
+    // connecter sans dépendre de la collection de validation des agents.
+    if (compteHistorique && !pageAgent) {
+      lancerUtilisateur(user);
+      return;
+    }
+
     try {
       const compteSnap = await db.collection('conteneurs_comptes').doc(user.uid).get();
       if (compteSnap.exists) {
