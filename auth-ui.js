@@ -40,6 +40,7 @@ function afficherConnexion(onReady) {
         <input id="authEmail" type="email" autocomplete="username" placeholder="Adresse e-mail" required style="padding:12px;border:1px solid #cbd5e1;border-radius:12px;font-size:15px">
         <input id="authPassword" type="password" autocomplete="current-password" placeholder="Mot de passe" required style="padding:12px;border:1px solid #cbd5e1;border-radius:12px;font-size:15px">
         <button id="authSubmit" type="submit" class="ok" style="width:100%;padding:12px">Se connecter</button>
+        <button id="authForgot" type="button" style="border:0;background:transparent;color:#2563eb;font-size:13px;font-weight:700;padding:4px 8px;cursor:pointer">Mot de passe oublié ?</button>
         <div id="authError" style="min-height:18px;color:#b91c1c;font-size:12px;text-align:center"></div>
       </form>
 
@@ -70,6 +71,7 @@ function afficherConnexion(onReady) {
 
   const form = overlay.querySelector('#authForm');
   const submit = overlay.querySelector('#authSubmit');
+  const forgot = overlay.querySelector('#authForgot');
   const error = overlay.querySelector('#authError');
   const createToggle = overlay.querySelector('#authCreateToggle');
   const createForm = overlay.querySelector('#authCreateForm');
@@ -95,6 +97,15 @@ function afficherConnexion(onReady) {
       'auth/operation-not-allowed': 'La création de compte par e-mail n’est pas activée dans Firebase.'
     };
     return messages[e.code] || `Création impossible : ${e.message}`;
+  }
+
+  function messageErreurReset(e) {
+    const messages = {
+      'auth/invalid-email': 'Adresse e-mail invalide.',
+      'auth/too-many-requests': 'Trop de demandes. Réessaie un peu plus tard.',
+      'auth/network-request-failed': 'Problème de connexion internet. Réessaie.'
+    };
+    return messages[e.code] || `Envoi impossible : ${e.message}`;
   }
 
   function afficherMessageCompte(message, couleur = '#b45309') {
@@ -131,6 +142,32 @@ function afficherConnexion(onReady) {
     } finally {
       submit.disabled = false;
       submit.textContent = 'Se connecter';
+    }
+  });
+
+  forgot.addEventListener('click', async () => {
+    const email = overlay.querySelector('#authEmail').value.trim().toLowerCase();
+    error.textContent = '';
+    messageCompte = '';
+    if (!email) {
+      error.style.color = '#b45309';
+      error.textContent = 'Entre d’abord ton adresse e-mail, puis appuie sur « Mot de passe oublié ? ».';
+      overlay.querySelector('#authEmail').focus();
+      return;
+    }
+
+    forgot.disabled = true;
+    forgot.textContent = 'Envoi du lien…';
+    try {
+      await auth.sendPasswordResetEmail(email);
+      error.style.color = '#047857';
+      error.textContent = `✅ Un e-mail de réinitialisation a été envoyé à ${email}. Pense à vérifier les indésirables.`;
+    } catch (e) {
+      error.style.color = '#b91c1c';
+      error.textContent = messageErreurReset(e);
+    } finally {
+      forgot.disabled = false;
+      forgot.textContent = 'Mot de passe oublié ?';
     }
   });
 
