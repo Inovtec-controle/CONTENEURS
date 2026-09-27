@@ -11,8 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260927-planningbridge1"></script>
-  <script src="auth-ui.js?v=20260927-planningbridge1"></script>
+  <script src="firebase.js?v=20260927-livedashboard1"></script>
+  <script src="auth-ui.js?v=20260927-livedashboard1"></script>
   <style>
     .container-type{display:inline-flex;align-items:center;gap:7px;margin:12px 0 4px;padding:7px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:13px}
     .status-message{padding:12px;border-radius:12px;background:#f8fafc;margin-top:10px}
@@ -45,6 +45,9 @@ const agent=(params.get('agent')||'').trim().toLowerCase();
 const label=document.getElementById('agentLabel');
 const tiles=document.getElementById('tiles');
 const plansAffiches=new Map();
+let arretEcoutePlans=null;
+let arretEcoutePoints=null;
+let timerRechargeAgent=null;
 
 function echapper(texte=''){
   return String(texte).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -212,9 +215,29 @@ async function corrigerSaisie(id,bouton){
   }
 }
 
-afficherConnexion(()=>charger().catch(e=>{
+function afficherErreurAgent(e){
+  console.error(e);
   tiles.innerHTML=`<div class="card empty">Erreur : ${echapper(e.message)}</div>`;
-}));
+}
+
+function programmerRechargeAgent(){
+  clearTimeout(timerRechargeAgent);
+  timerRechargeAgent=setTimeout(()=>charger().catch(afficherErreurAgent),80);
+}
+
+function demarrerTempsReelAgent(){
+  if(!arretEcoutePlans){
+    arretEcoutePlans=db.collection('conteneurs_plannings').onSnapshot(programmerRechargeAgent,afficherErreurAgent);
+  }
+  if(!arretEcoutePoints){
+    arretEcoutePoints=db.collection('conteneurs_pointages').where('date','==',dateISO()).onSnapshot(programmerRechargeAgent,afficherErreurAgent);
+  }
+}
+
+afficherConnexion(()=>{
+  demarrerTempsReelAgent();
+  charger().catch(afficherErreurAgent);
+});
 </script>
 </body>
 </html>
