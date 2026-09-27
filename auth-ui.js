@@ -15,6 +15,11 @@ function nettoyerIdentifiantCompte(valeur = '') {
 }
 
 const DATE_ACTIVATION_COMPTES_AGENTS = Date.parse('2026-08-10T13:46:22Z');
+const EMAILS_ADMINISTRATION = new Set(['a.labarthe@inovtec.eu']);
+
+function estCompteAdministration(user) {
+  return EMAILS_ADMINISTRATION.has(String(user?.email || '').trim().toLowerCase());
+}
 
 function estCompteHistorique(user) {
   const creation = Date.parse(user?.metadata?.creationTime || '');
@@ -281,6 +286,16 @@ function afficherConnexion(onReady) {
     }
 
     const compteHistorique = estCompteHistorique(user);
+    const compteAdministration = estCompteAdministration(user);
+
+    // Le compte administrateur principal reste autorisé même si son compte
+    // Firebase a été recréé après un changement d'identifiants. Il ne doit pas
+    // dépendre de la collection conteneurs_comptes réservée à la validation
+    // des comptes agents.
+    if (compteAdministration) {
+      lancerUtilisateur(user);
+      return;
+    }
 
     // Les comptes créés avant la mise en place des comptes agents étaient les
     // comptes d'administration existants. Ils doivent pouvoir continuer à se
