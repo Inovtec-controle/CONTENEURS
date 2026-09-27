@@ -11,8 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260927-authfix1"></script>
-  <script src="auth-ui.js?v=20260927-adminfix1"></script>
+  <script src="firebase.js?v=20260927-planningbridge1"></script>
+  <script src="auth-ui.js?v=20260927-planningbridge1"></script>
   <style>
     .container-type{display:inline-flex;align-items:center;gap:7px;margin:12px 0 4px;padding:7px 11px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:13px}
     .status-message{padding:12px;border-radius:12px;background:#f8fafc;margin-top:10px}
@@ -20,6 +20,9 @@
     .correction-btn{width:100%;background:#fff;color:#475569;border:1px solid #cbd5e1}
     .correction-btn:hover{background:#f8fafc}
     .replacement-notice{margin:10px 0 2px;padding:9px 11px;border-radius:11px;background:#fff7ed;color:#9a3412;font-size:13px;font-weight:700}
+    .planning-source{display:inline-flex;margin:8px 0 0;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:11px;font-weight:800}
+    .mission-window{margin:9px 0 0;padding:8px 10px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:750}
+    .mission-window.late{background:#fff7ed;color:#9a3412}
     button:disabled{opacity:.6;cursor:wait}
   </style>
 </head>
@@ -64,11 +67,16 @@ async function charger(){
   const points={};
   pointsSnap.forEach(d=>points[d.id]=d.data());
 
-  const candidats=[];
+  const actifs=[];
   plansSnap.forEach(d=>{
     const p={id:d.id,...d.data()};
+    if(planningActifAujourdHui(p,aujourdHui))actifs.push(p);
+  });
+  const priorises=typeof prioriserMissionsPlanning==='function'?prioriserMissionsPlanning(actifs,aujourdHui):actifs;
+  const candidats=[];
+  priorises.forEach(p=>{
     const effectif=agentEffectifPourDate(p,aujourdHui);
-    if(planningActifAujourdHui(p,aujourdHui)&&effectif.agentId===agent){
+    if(effectif.agentId===agent){
       p.effectif=effectif;
       candidats.push(p);
     }
@@ -92,6 +100,22 @@ async function charger(){
   tiles.innerHTML=plans.map(p=>tuile(p,points[idPointage(p.id,aujourdHui)],aujourdHui)).join('');
 }
 
+function minutesHeure(valeur){
+  const m=String(valeur||'').match(/^(\d{1,2}):(\d{2})$/);
+  return m?Number(m[1])*60+Number(m[2]):null;
+}
+
+function etatHorairePlanning(p,date=new Date()){
+  if(!(p?.managedByPlanning===true||p?.sourceSystem==='kontrol-planning'))return null;
+  const debut=minutesHeure(p.heureDebut),fin=minutesHeure(p.heureFin);
+  if(debut===null)return null;
+  const maintenant=date.getHours()*60+date.getMinutes();
+  const ouverture=Math.max(0,debut-30);
+  if(maintenant<ouverture)return{phase:'avenir',peutValider:false,texte:`À venir · validation à partir de ${String(Math.floor(ouverture/60)).padStart(2,'0')}:${String(ouverture%60).padStart(2,'0')}`};
+  if(fin!==null&&maintenant>fin)return{phase:'retard',peutValider:true,texte:`Créneau dépassé · prévu ${p.heureDebut||'—'}–${p.heureFin||'—'}`};
+  return{phase:'actif',peutValider:true,texte:`Créneau actif · ${p.heureDebut||'—'}–${p.heureFin||'—'}`};
+}
+
 function tuile(p,point,date=new Date()){
   const statut=point?.statut||'afaire';
   const cls=statut==='fait'?'done':statut==='probleme'?'problem':'';
@@ -101,6 +125,9 @@ function tuile(p,point,date=new Date()){
   const remplacement=effectif.estRemplacant
     ? `<div class="replacement-notice">🔄 Remplacement temporaire de ${echapper(effectif.titulaireNom||effectif.titulaireId)}</div>`
     : '';
+  const pilotePlanning=p?.managedByPlanning===true||p?.sourceSystem==='kontrol-planning';
+  const horaire=etatHorairePlanning(p,date);
+  const source=pilotePlanning?'<div class="planning-source">↔ Mission issue du Planning KONTROL</div>':'';
 
   const etat=point
     ? `<div class="status-message">
@@ -110,15 +137,18 @@ function tuile(p,point,date=new Date()){
           <button class="correction-btn" type="button" onclick="corrigerSaisie('${p.id}',this)">↩ Corriger ma saisie</button>
         </div>
       </div>`
-    : `<div class="buttons">
+    : (horaire&&!horaire.peutValider
+      ? `<div class="mission-window">${echapper(horaire.texte)}</div>`
+      : `${horaire?`<div class="mission-window ${horaire.phase==='retard'?'late':''}">${echapper(horaire.texte)}</div>`:''}<div class="buttons">
         <button class="ok" type="button" onclick="valider('${p.id}','fait',this)">✅ FAIT</button>
         <button class="warning" type="button" onclick="valider('${p.id}','probleme',this)">⚠️ SIGNALER UN PROBLÈME</button>
-      </div>`;
+      </div>`);
 
   return `<section class="tile ${cls}" id="tile-${p.id}">
     <h2>${echapper(p.chantierNom)}</h2>
     <div class="address">${echapper(p.adresse||'')}</div>
     ${remplacement}
+    ${source}
     <div class="action ${p.action}">${p.action==='sortie'?'⬆️ SORTIE DES CONTENEURS':'⬇️ RENTRÉE DES CONTENEURS'}</div>
     <div class="container-type">🗑️ ${type}</div>
     <div class="meta">Prévu : ${echapper(p.heureDebut||'—')} à ${echapper(p.heureFin||'—')}</div>

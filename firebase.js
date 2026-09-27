@@ -83,8 +83,12 @@ function planningInfosDuChantier(site) {
   return { ...valeurs, actif: canonique || legacyExploitable };
 }
 
+function estMissionPlanning(planning) {
+  return !!(planning && (planning.managedByPlanning === true || planning.sourceSystem === "kontrol-planning"));
+}
+
 function chantierInfosPourPlanning(planning) {
-  if (!planning) return null;
+  if (!planning || estMissionPlanning(planning)) return null;
   const id = String(planning.chantierId || planning.sourceChantierId || "");
   if (id) {
     const direct = chantiersInfos.find(c => String(c.id) === id);
@@ -147,7 +151,9 @@ function frequenceValidePourDate(planning, date) {
 }
 
 function planningActifAujourdHui(planning, date = new Date()) {
-  if (!planning.actif) return false;
+  if (!planning || planning.actif === false) return false;
+  const dateExacte=String(planning.dateExacte || planning.planningDate || "");
+  if(estMissionPlanning(planning) && dateExacte)return dateExacte===dateISO(date);
   const site=chantierInfosPourPlanning(planning),info=planningInfosDuChantier(site);
   if(info?.actif){
     const secours=frequenceValide(planning.frequence)||"toutes";
@@ -159,6 +165,7 @@ function planningActifAujourdHui(planning, date = new Date()) {
 
 function typeConteneurEffectif(planning, date = new Date()) {
   const type = String(planning?.typeConteneur || "").toUpperCase();
+  if(estMissionPlanning(planning))return type;
   const site = chantierInfosPourPlanning(planning);
   const info = planningInfosDuChantier(site);
   if (!info?.actif) return type;
@@ -168,12 +175,41 @@ function typeConteneurEffectif(planning, date = new Date()) {
   return om&&tri?"OM/TRI":om?"OM":tri?"TRI":type;
 }
 
+function typesConteneur(planning){
+  const type=String(planning?.typeConteneur||"").toUpperCase();
+  if(type==="OM/TRI")return["OM","TRI"];
+  return["OM","TRI"].includes(type)?[type]:[];
+}
+
+function prioriserMissionsPlanning(plans, date = new Date()) {
+  const liste=Array.isArray(plans)?plans:[];
+  const pilotes=liste.filter(estMissionPlanning);
+  if(!pilotes.length)return liste.slice();
+  const couverture=new Map();
+  pilotes.forEach(p=>{
+    if(!planningActifAujourdHui(p,date))return;
+    const site=normaliserLienInfos(p.chantierNom)||normaliserLienInfos(p.adresse)||String(p.chantierId||"");
+    const cle=`${site}|${p.action||""}`;
+    const set=couverture.get(cle)||new Set();
+    typesConteneur(p).forEach(t=>set.add(t));
+    couverture.set(cle,set);
+  });
+  return liste.filter(p=>{
+    if(estMissionPlanning(p))return true;
+    const site=normaliserLienInfos(p.chantierNom)||normaliserLienInfos(p.adresse)||String(p.chantierId||"");
+    const set=couverture.get(`${site}|${p.action||""}`);
+    const needed=typesConteneur(p);
+    return !set||!needed.length||!needed.every(t=>set.has(t));
+  });
+}
+
 function dedoublonnerPlanningsActifsInfos(plans, date = new Date()) {
   const liste = Array.isArray(plans) ? plans : [];
   const jour = jours[date.getDay()];
   const resultat = [];
   const groupes = new Map();
   liste.forEach(p => {
+    if(estMissionPlanning(p)){resultat.push(p);return}
     const lies = joursInfosPourPlanning(p);
     if (!lies) { resultat.push(p); return; }
     const site = chantierInfosPourPlanning(p);
@@ -253,6 +289,18 @@ function remplacementPourDate(planning, date = new Date()) {
 }
 
 function agentEffectifPourDate(planning, date = new Date()) {
+  if(estMissionPlanning(planning)){
+    const rep=planning?.planningReplacement;
+    const estRemplacant=!!(rep&&rep.originalAgentId);
+    return{
+      agentId:planning.agentId||"",
+      agentNom:planning.agentNom||planning.agentId||"",
+      estRemplacant,
+      remplacementId:rep?.leaveId||"",
+      titulaireId:estRemplacant?(rep.originalAgentId||""):(planning.agentId||""),
+      titulaireNom:estRemplacant?(rep.originalAgentName||rep.originalAgentId||""):(planning.agentNom||planning.agentId||"")
+    };
+  }
   const remplacement = remplacementPourDate(planning, date);
   if (remplacement) {
     return {

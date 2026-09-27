@@ -11,8 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260927-authfix1"></script>
-  <script src="auth-ui.js?v=20260927-adminfix1"></script>
+  <script src="firebase.js?v=20260927-planningbridge1"></script>
+  <script src="auth-ui.js?v=20260927-planningbridge1"></script>
   <style>
     .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
     .calendar-card{margin-bottom:16px}
@@ -52,7 +52,7 @@
         <button id="jourSuivant" class="btn secondary" type="button">Jour suivant →</button>
       </div>
       <div id="dateLibelle" class="selected-date"></div>
-      <p class="history-note">Les jours et les fréquences de passage viennent automatiquement d’Infos chantier lorsqu’ils y sont renseignés. Pour une date passée, une prestation sans pointage apparaît comme « Non effectuée ».</p>
+      <p class="history-note">Les missions marquées « conteneurs » dans le Planning KONTROL utilisent l’agent, la date et l’horaire réellement planifiés. Les anciennes programmations restent disponibles lorsqu’aucune mission Planning ne les remplace. Pour une date passée, une prestation sans pointage apparaît comme « Non effectuée ».</p>
     </section>
 
     <div id="stats" class="stats"></div>
@@ -89,7 +89,8 @@ function modifierDate(nombreJours){
 }
 
 function planningValablePourDate(planning,date){
-  if(planning.createdAt&&typeof planning.createdAt.toDate==='function'){
+  const pilotePlanning=planning?.managedByPlanning===true||planning?.sourceSystem==='kontrol-planning';
+  if(!pilotePlanning&&planning.createdAt&&typeof planning.createdAt.toDate==='function'){
     const finJour=new Date(date);
     finJour.setHours(23,59,59,999);
     if(planning.createdAt.toDate()>finJour)return false;
@@ -129,7 +130,8 @@ async function charger(){
     const p={id:d.id,...d.data()};
     if(planningValablePourDate(p,dateSelection))candidats.push(p);
   });
-  const plans=typeof dedoublonnerPlanningsActifsInfos==='function'?dedoublonnerPlanningsActifsInfos(candidats,dateSelection):candidats;
+  const priorises=typeof prioriserMissionsPlanning==='function'?prioriserMissionsPlanning(candidats,dateSelection):candidats;
+  const plans=typeof dedoublonnerPlanningsActifsInfos==='function'?dedoublonnerPlanningsActifsInfos(priorises,dateSelection):priorises;
   plans.sort((a,b)=>(a.heureDebut||'').localeCompare(b.heureDebut||'')||(a.chantierNom||'').localeCompare(b.chantierNom||'','fr'));
 
   let fait=0;
@@ -167,7 +169,7 @@ async function charger(){
     }
 
     return `<tr class="${ligneClasse}">
-      <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
+      <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span>${p.managedByPlanning===true||p.sourceSystem==='kontrol-planning'?'<br><span class="badge done-badge">Planning KONTROL</span>':''}</td>
       <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
       <td><span class="type-tag">${echapper(typeEffectif||'Non précisé')}</span></td>
       <td>${echapper(p.agentNom||p.agentId)}</td>
