@@ -12,7 +12,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="firebase.js?v=20260927-livedashboard1"></script>
-  <script src="auth-ui.js?v=20260927-livedashboard1"></script>
+  <script src="auth-ui.js?v=20260927-linkedagents2"></script>
   <style>
     .agent-links-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
     .agent-link-card{border:1px solid #dbe4df;border-radius:16px;padding:14px;background:#f8fbf9}
@@ -340,27 +340,30 @@ async function copierLien(lien,bouton){
 
 function afficherLiensAgents(data){
   const map=new Map();
-  donneesActives(data).forEach(p=>{
+  (Array.isArray(data)?data:[]).forEach(p=>{
     if(!p.agentId)return;
-    const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0,dates:[]};
-    existant.nombre++;
+    const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombreActif:0,dates:[]};
     if(p.agentNom)existant.agentNom=p.agentNom;
-    const exacte=String(p.dateExacte||p.planningDate||'');
-    if(exacte)existant.dates.push(exacte);
+    if(estVisibleAdministration(p)){
+      existant.nombreActif++;
+      const exacte=String(p.dateExacte||p.planningDate||'');
+      if(exacte)existant.dates.push(exacte);
+    }
     map.set(p.agentId,existant);
   });
   const agents=[...map.values()].sort((a,b)=>a.agentNom.localeCompare(b.agentNom,'fr'));
   const zone=document.getElementById('agents');
   if(!agents.length){
-    zone.innerHTML='<div class="empty">Aucune mission active ou à venir. Les liens apparaîtront automatiquement dès qu’une tâche conteneur sera enregistrée dans Planning.</div>';
+    zone.innerHTML='<div class="empty">Aucun agent conteneur connu. Une bulle apparaîtra dès qu’une première mission sera synchronisée depuis Planning.</div>';
     return;
   }
   zone.innerHTML=agents.map(a=>{
     const lien=lienAgent(a.agentId);
     const prochaine=a.dates.sort()[0]||'';
+    const nb=a.nombreActif;
     return `<article class="agent-link-card"><h3><span class="live-dot"></span>${echapper(a.agentNom)}</h3>
-      <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''} actif${a.nombre>1?'s':''}/à venir</span></div>
-      ${prochaine?`<div class="agent-next">Prochain passage daté : <strong>${echapper(dateFRAdmin(prochaine))}</strong></div>`:''}
+      <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${nb} passage${nb>1?'s':''} actif${nb>1?'s':''}/à venir</span></div>
+      ${prochaine?`<div class="agent-next">Prochain passage daté : <strong>${echapper(dateFRAdmin(prochaine))}</strong></div>`:'<div class="agent-next">Lien disponible · aucun passage actif/à venir actuellement</div>'}
       <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
       <div class="agent-link-row"><button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
       <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a></div></article>`;
