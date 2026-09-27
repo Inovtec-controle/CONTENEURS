@@ -21,6 +21,29 @@ function estCompteHistorique(user) {
   return Number.isFinite(creation) && creation < DATE_ACTIVATION_COMPTES_AGENTS;
 }
 
+async function definirPersistanceAuth() {
+  const modes = [
+    firebase.auth.Auth.Persistence.LOCAL,
+    firebase.auth.Auth.Persistence.SESSION,
+    firebase.auth.Auth.Persistence.NONE
+  ];
+  let derniereErreur = null;
+
+  for (const mode of modes) {
+    try {
+      await auth.setPersistence(mode);
+      return mode;
+    } catch (e) {
+      derniereErreur = e;
+    }
+  }
+
+  if (derniereErreur) {
+    console.warn('Persistance Firebase indisponible, tentative de connexion sans persistance confirmée.', derniereErreur);
+  }
+  return null;
+}
+
 function afficherConnexion(onReady) {
   const pageAgent = estVueAgent();
   const agentLien = identifiantAgentDuLien();
@@ -81,6 +104,7 @@ function afficherConnexion(onReady) {
   function messageErreurConnexion(e) {
     const messages = {
       'auth/invalid-credential': 'E-mail ou mot de passe incorrect.',
+      'auth/invalid-login-credentials': 'E-mail ou mot de passe incorrect.',
       'auth/user-not-found': 'Compte introuvable.',
       'auth/wrong-password': 'Mot de passe incorrect.',
       'auth/too-many-requests': 'Trop de tentatives. Réessaie plus tard.',
@@ -132,7 +156,7 @@ function afficherConnexion(onReady) {
     submit.disabled = true;
     submit.textContent = 'Connexion…';
     try {
-      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      await definirPersistanceAuth();
       await auth.signInWithEmailAndPassword(
         overlay.querySelector('#authEmail').value.trim(),
         overlay.querySelector('#authPassword').value
@@ -210,7 +234,7 @@ function afficherConnexion(onReady) {
       let utilisateurCree = null;
 
       try {
-        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        await definirPersistanceAuth();
         const credential = await auth.createUserWithEmailAndPassword(email, motDePasse);
         utilisateurCree = credential.user;
         await utilisateurCree.updateProfile({ displayName: `${prenom} ${nom}`.trim() });
