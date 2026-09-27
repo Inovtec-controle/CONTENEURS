@@ -11,8 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260927-planningbridge1"></script>
-  <script src="auth-ui.js?v=20260927-planningbridge1"></script>
+  <script src="firebase.js?v=20260927-livedashboard1"></script>
+  <script src="auth-ui.js?v=20260927-livedashboard1"></script>
   <style>
     .agent-links-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
     .agent-link-card{border:1px solid #dbe4df;border-radius:16px;padding:14px;background:#f8fbf9}
@@ -22,6 +22,15 @@
     .agent-url{width:100%;padding:10px;border:1px solid #ccd8d1;border-radius:10px;background:white;font-size:12px}
     .link-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
     .agent-count{display:inline-block;padding:3px 8px;border-radius:999px;background:#e5f6ea;color:#18713b;font-size:11px;font-weight:700}
+    .agent-next{margin-top:6px;font-size:11px;color:#475569}
+    .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:5px;box-shadow:0 0 0 3px rgba(22,163,74,.12)}
+    .planning-date{font-weight:800;color:#0b6b43}
+    .manual-fallback{padding:0;overflow:hidden}
+    .manual-fallback>summary{cursor:pointer;list-style:none;padding:15px 17px;font-weight:850;color:#334155;background:#f8fafc}
+    .manual-fallback>summary::-webkit-details-marker{display:none}
+    .manual-fallback>summary::after{content:'＋';float:right;color:#64748b}
+    .manual-fallback[open]>summary::after{content:'−'}
+    .manual-fallback-body{padding:0 17px 17px}
     .message{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;font-size:13px;font-weight:600}
     .message.show{display:block}.message.info{background:#eff6ff;color:#1d4ed8}.message.success{background:#ecfdf5;color:#047857}.message.error{background:#fef2f2;color:#b91c1c}
     button:disabled{opacity:.6;cursor:wait}
@@ -54,8 +63,8 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>⚙️ Administration</h1>
-    <p>Créer un chantier puis programmer toutes ses sorties et rentrées en une seule fois</p>
+    <h1>⚙️ Pilotage conteneurs</h1>
+    <p>Les missions viennent du Planning KONTROL · ici tu distribues les liens et contrôles les passages</p>
   </header>
 
   <main class="container">
@@ -65,10 +74,11 @@
       <button class="btn secondary" type="button" onclick="deconnexion()">Déconnexion</button>
     </div>
 
-    <section class="card">
-      <h2>Créer un chantier et son planning</h2>
-      <p class="hint">Le chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Pour chaque passage, choisis OM, TRI ou OM/TRI.</p>
-      <div class="source-note">🔄 Les tâches « Sortie/Rentrée conteneurs » marquées dans le Planning KONTROL sont synchronisées automatiquement avec l’agent, le jour et l’horaire réellement planifiés. Les programmations saisies ici restent disponibles en secours lorsqu’aucune mission Planning ne les remplace.</div>
+    <details class="card manual-fallback">
+      <summary>🛟 Saisie manuelle de secours</summary>
+      <div class="manual-fallback-body">
+      <p class="hint">À utiliser uniquement si une mission ne peut pas être créée dans le Planning KONTROL.</p>
+      <div class="source-note">🔄 Fonctionnement normal : tu coches Sortie/Rentrée dans le Planning KONTROL. CONTENEURS crée automatiquement le passage, l’affecte au bon agent et met à jour son lien et les lignes ci-dessous en temps réel.</div>
 
       <div class="site-form" style="margin-top:14px">
         <input id="chantier" placeholder="Nom du chantier">
@@ -89,16 +99,17 @@
         <button id="reinitialiserBtn" class="btn secondary" type="button">Réinitialiser le formulaire</button>
       </div>
       <div id="message" class="message" role="status"></div>
-    </section>
+      </div>
+    </details>
 
     <section class="card" style="margin-top:16px">
       <h2>🔗 Liens des agents</h2>
-      <p class="meta">Chaque agent apparaît une seule fois, même s’il possède plusieurs chantiers.</p>
+      <p class="meta">Créés automatiquement dès qu’un agent possède au moins une mission active ou à venir. Le même lien peut être conservé et envoyé une seule fois à l’agent.</p>
       <div id="agents" class="agent-links-grid"><div class="empty">Connexion en cours…</div></div>
     </section>
 
     <section class="card" style="margin-top:16px">
-      <h2>Passages programmés</h2>
+      <h2>Passages actifs / à venir</h2>
       <div class="list-toolbar">
         <label for="triListe">Trier la liste par</label>
         <select id="triListe">
@@ -109,7 +120,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Chantier</th><th>Action</th><th>Type</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr></thead>
+          <thead><tr><th>Chantier</th><th>Action</th><th>Type</th><th>Jour / date</th><th>Agent</th><th>Horaire</th><th></th></tr></thead>
           <tbody id="liste"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
         </table>
       </div>
@@ -122,6 +133,7 @@ const enregistrerBtn=document.getElementById('enregistrerBtn');
 const message=document.getElementById('message');
 let compteurPassages=0;
 let donneesListe=[];
+let arretEcouteProgrammations=null;
 
 const joursOptions=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
 const frequencesOptions=[
@@ -147,6 +159,27 @@ function echapper(texte=''){
 function lienAgent(agentId){
   const base=new URL('./',location.href);
   return new URL(`?agent=${encodeURIComponent(agentId)}`,base).href;
+}
+
+function estPilotePlanning(p){
+  return !!(p&&(p.managedByPlanning===true||p.sourceSystem==='kontrol-planning'));
+}
+
+function estVisibleAdministration(p){
+  if(!p||p.actif===false||p.planningRemoved===true)return false;
+  if(!estPilotePlanning(p))return true;
+  const exacte=String(p.dateExacte||p.planningDate||'');
+  return !exacte||exacte>=dateISO();
+}
+
+function dateFRAdmin(iso){
+  const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m)return '';
+  return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),12).toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'});
+}
+
+function donneesActives(data){
+  return (Array.isArray(data)?data:[]).filter(estVisibleAdministration);
 }
 
 function optionsHTML(options,selection){
@@ -307,32 +340,42 @@ async function copierLien(lien,bouton){
 
 function afficherLiensAgents(data){
   const map=new Map();
-  data.forEach(p=>{
+  donneesActives(data).forEach(p=>{
     if(!p.agentId)return;
-    const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0};
-    existant.nombre++;if(p.agentNom)existant.agentNom=p.agentNom;map.set(p.agentId,existant);
+    const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0,dates:[]};
+    existant.nombre++;
+    if(p.agentNom)existant.agentNom=p.agentNom;
+    const exacte=String(p.dateExacte||p.planningDate||'');
+    if(exacte)existant.dates.push(exacte);
+    map.set(p.agentId,existant);
   });
   const agents=[...map.values()].sort((a,b)=>a.agentNom.localeCompare(b.agentNom,'fr'));
   const zone=document.getElementById('agents');
-  if(!agents.length){zone.innerHTML='<div class="empty">Ajoute une première programmation pour faire apparaître le lien de l’agent.</div>';return;}
+  if(!agents.length){
+    zone.innerHTML='<div class="empty">Aucune mission active ou à venir. Les liens apparaîtront automatiquement dès qu’une tâche conteneur sera enregistrée dans Planning.</div>';
+    return;
+  }
   zone.innerHTML=agents.map(a=>{
     const lien=lienAgent(a.agentId);
-    return `<article class="agent-link-card"><h3>${echapper(a.agentNom)}</h3>
-      <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''}</span></div>
+    const prochaine=a.dates.sort()[0]||'';
+    return `<article class="agent-link-card"><h3><span class="live-dot"></span>${echapper(a.agentNom)}</h3>
+      <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''} actif${a.nombre>1?'s':''}/à venir</span></div>
+      ${prochaine?`<div class="agent-next">Prochain passage daté : <strong>${echapper(dateFRAdmin(prochaine))}</strong></div>`:''}
       <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
       <div class="agent-link-row"><button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
       <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a></div></article>`;
   }).join('');
   document.querySelectorAll('.copy-agent-link').forEach(b=>b.addEventListener('click',()=>copierLien(b.dataset.link,b)));
 }
-
 function trierProgrammations(data){
   const mode=document.getElementById('triListe')?.value||'residence';
   const ordreJours={lundi:1,mardi:2,mercredi:3,jeudi:4,vendredi:5,samedi:6,dimanche:7};
   const comparer=(a,b)=>String(a||'').localeCompare(String(b||''),'fr',{sensitivity:'base',numeric:true});
+  const dateMission=p=>String(p?.dateExacte||p?.planningDate||'9999-99-99');
   return [...data].sort((a,b)=>{
     if(mode==='agent'){
       return comparer(a.agentNom||a.agentId,b.agentNom||b.agentId)
+        ||comparer(dateMission(a),dateMission(b))
         ||comparer(a.chantierNom,b.chantierNom)
         ||(ordreJours[a.jour]||9)-(ordreJours[b.jour]||9)
         ||comparer(a.heureDebut,b.heureDebut);
@@ -344,6 +387,7 @@ function trierProgrammations(data){
         ||comparer(a.agentNom||a.agentId,b.agentNom||b.agentId);
     }
     return comparer(a.chantierNom,b.chantierNom)
+      ||comparer(dateMission(a),dateMission(b))
       ||(ordreJours[a.jour]||9)-(ordreJours[b.jour]||9)
       ||comparer(a.heureDebut,b.heureDebut)
       ||comparer(a.agentNom||a.agentId,b.agentNom||b.agentId);
@@ -351,36 +395,47 @@ function trierProgrammations(data){
 }
 
 function afficherProgrammations(data){
-  const liste=trierProgrammations(data);
+  const liste=trierProgrammations(donneesActives(data));
   document.getElementById('liste').innerHTML=liste.map(p=>{
-    const pilotePlanning=p.managedByPlanning===true||p.sourceSystem==='kontrol-planning';
+    const pilotePlanning=estPilotePlanning(p);
     const joursLies=!pilotePlanning&&window.InovtecConteneursInfos?.joursInfosPourPlanning?.(p);
-    const jourAffiche=joursLies?window.InovtecConteneursInfos.libelleJoursInfosPlanning(p):(p.jour||'');
-    const source=pilotePlanning?'<br><span class="source-tag">Planning KONTROL</span>':(joursLies?'<br><span class="source-tag">Infos chantier</span>':'');
+    const exacte=String(p.dateExacte||p.planningDate||'');
+    const jourAffiche=pilotePlanning&&exacte?dateFRAdmin(exacte):(joursLies?window.InovtecConteneursInfos.libelleJoursInfosPlanning(p):(p.jour||''));
+    const source=pilotePlanning?'<br><span class="source-tag">Planning KONTROL · temps réel</span>':(joursLies?'<br><span class="source-tag">Infos chantier</span>':'');
     return `<tr>
       <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
       <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
       <td><span class="type-tag">${echapper(p.typeConteneur||'Non précisé')}</span></td>
-      <td>${echapper(jourAffiche)}${source}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
+      <td><span class="${pilotePlanning?'planning-date':''}">${echapper(jourAffiche)}</span>${source}${pilotePlanning?'':`<br><span class="meta">${echapper(p.frequence||'')}</span>`}</td>
       <td>${echapper(p.agentNom||p.agentId)}<br><span class="meta">${echapper(p.agentId||'')}</span></td>
       <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
       <td>${pilotePlanning?'<span class="meta">Piloté par Planning</span>':`<button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button>`}</td></tr>`;
   }).join('')||'<tr><td colspan="7" class="empty">Aucune programmation.</td></tr>';
 }
 
-async function charger(){
-  try{
-    const snap=await db.collection('conteneurs_plannings').get();
-    const data=[];snap.forEach(d=>data.push({id:d.id,...d.data()}));
-    donneesListe=data;
-    afficherLiensAgents(data);
-    afficherProgrammations(data);
-  }catch(e){
-    console.error(e);
-    document.getElementById('agents').innerHTML=`<div class="empty">Erreur Firebase : ${echapper(e.message)}</div>`;
-    document.getElementById('liste').innerHTML=`<tr><td colspan="7" class="empty">Erreur Firebase : ${echapper(e.message)}</td></tr>`;
-    afficherMessage(`Chargement impossible : ${e.message}`,'error');
-  }
+function appliquerProgrammationsSnapshot(snap){
+  const data=[];
+  snap.forEach(d=>data.push({id:d.id,...d.data()}));
+  donneesListe=data;
+  afficherLiensAgents(data);
+  afficherProgrammations(data);
+}
+
+function afficherErreurProgrammations(e){
+  console.error(e);
+  document.getElementById('agents').innerHTML=`<div class="empty">Erreur Firebase : ${echapper(e.message)}</div>`;
+  document.getElementById('liste').innerHTML=`<tr><td colspan="7" class="empty">Erreur Firebase : ${echapper(e.message)}</td></tr>`;
+  afficherMessage(`Synchronisation impossible : ${e.message}`,'error');
+}
+
+function charger(){
+  if(arretEcouteProgrammations)return;
+  document.getElementById('agents').innerHTML='<div class="empty">Synchronisation avec Planning KONTROL…</div>';
+  document.getElementById('liste').innerHTML='<tr><td colspan="7" class="empty">Synchronisation avec Planning KONTROL…</td></tr>';
+  arretEcouteProgrammations=db.collection('conteneurs_plannings').onSnapshot(
+    appliquerProgrammationsSnapshot,
+    afficherErreurProgrammations
+  );
 }
 
 document.getElementById('ajouterPassageBtn').addEventListener('click',()=>ajouterLignePassage());

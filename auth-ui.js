@@ -401,7 +401,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (/administration\.html$/.test(chemin)) {
       await chargerScriptAdministration('comptes-agents.js');
       await chargerScriptAdministration('remplacements.js?v=20260927-planningbridge1');
-      await chargerScriptAdministration('agent-chantiers.js?v=20260927-planningbridge1');
+      await chargerScriptAdministration('agent-chantiers.js?v=20260927-livedashboard1');
       await chargerScriptAdministration('rentree-auto-sortie.js');
       await chargerScriptAdministration('edition-plannings.js');
       await chargerScriptAdministration('rattrapage-rentrees-existantes.js?v=20260927-planningbridge1');
