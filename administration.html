@@ -332,25 +332,33 @@ async function copierLien(lien,bouton){
 
 function afficherLiensAgents(data){
   const map=new Map();
-  data.forEach(p=>{
+  donneesActives(data).forEach(p=>{
     if(!p.agentId)return;
-    const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0};
-    existant.nombre++;if(p.agentNom)existant.agentNom=p.agentNom;map.set(p.agentId,existant);
+    const existant=map.get(p.agentId)||{agentId:p.agentId,agentNom:p.agentNom||p.agentId,nombre:0,dates:[]};
+    existant.nombre++;
+    if(p.agentNom)existant.agentNom=p.agentNom;
+    const exacte=String(p.dateExacte||p.planningDate||'');
+    if(exacte)existant.dates.push(exacte);
+    map.set(p.agentId,existant);
   });
   const agents=[...map.values()].sort((a,b)=>a.agentNom.localeCompare(b.agentNom,'fr'));
   const zone=document.getElementById('agents');
-  if(!agents.length){zone.innerHTML='<div class="empty">Ajoute une première programmation pour faire apparaître le lien de l’agent.</div>';return;}
+  if(!agents.length){
+    zone.innerHTML='<div class="empty">Aucune mission active ou à venir. Les liens apparaîtront automatiquement dès qu’une tâche conteneur sera enregistrée dans Planning.</div>';
+    return;
+  }
   zone.innerHTML=agents.map(a=>{
     const lien=lienAgent(a.agentId);
-    return `<article class="agent-link-card"><h3>${echapper(a.agentNom)}</h3>
-      <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''}</span></div>
+    const prochaine=a.dates.sort()[0]||'';
+    return `<article class="agent-link-card"><h3><span class="live-dot"></span>${echapper(a.agentNom)}</h3>
+      <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''} actif${a.nombre>1?'s':''}/à venir</span></div>
+      ${prochaine?`<div class="agent-next">Prochain passage daté : <strong>${echapper(dateFRAdmin(prochaine))}</strong></div>`:''}
       <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
       <div class="agent-link-row"><button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
       <a class="btn secondary link-button" href="${echapper(lien)}" target="_blank" rel="noopener">↗ Ouvrir la page agent</a></div></article>`;
   }).join('');
   document.querySelectorAll('.copy-agent-link').forEach(b=>b.addEventListener('click',()=>copierLien(b.dataset.link,b)));
 }
-
 function trierProgrammations(data){
   const mode=document.getElementById('triListe')?.value||'residence';
   const ordreJours={lundi:1,mardi:2,mercredi:3,jeudi:4,vendredi:5,samedi:6,dimanche:7};
