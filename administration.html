@@ -112,7 +112,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Chantier</th><th>Action</th><th>Type</th><th>Jour</th><th>Agent</th><th>Horaire</th><th></th></tr></thead>
+          <thead><tr><th>Chantier</th><th>Action</th><th>Type</th><th>Jour / date</th><th>Agent</th><th>Horaire</th><th></th></tr></thead>
           <tbody id="liste"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
         </table>
       </div>
@@ -363,9 +363,11 @@ function trierProgrammations(data){
   const mode=document.getElementById('triListe')?.value||'residence';
   const ordreJours={lundi:1,mardi:2,mercredi:3,jeudi:4,vendredi:5,samedi:6,dimanche:7};
   const comparer=(a,b)=>String(a||'').localeCompare(String(b||''),'fr',{sensitivity:'base',numeric:true});
+  const dateMission=p=>String(p?.dateExacte||p?.planningDate||'9999-99-99');
   return [...data].sort((a,b)=>{
     if(mode==='agent'){
       return comparer(a.agentNom||a.agentId,b.agentNom||b.agentId)
+        ||comparer(dateMission(a),dateMission(b))
         ||comparer(a.chantierNom,b.chantierNom)
         ||(ordreJours[a.jour]||9)-(ordreJours[b.jour]||9)
         ||comparer(a.heureDebut,b.heureDebut);
@@ -377,6 +379,7 @@ function trierProgrammations(data){
         ||comparer(a.agentNom||a.agentId,b.agentNom||b.agentId);
     }
     return comparer(a.chantierNom,b.chantierNom)
+      ||comparer(dateMission(a),dateMission(b))
       ||(ordreJours[a.jour]||9)-(ordreJours[b.jour]||9)
       ||comparer(a.heureDebut,b.heureDebut)
       ||comparer(a.agentNom||a.agentId,b.agentNom||b.agentId);
