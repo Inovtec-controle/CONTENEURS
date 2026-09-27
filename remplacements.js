@@ -111,7 +111,11 @@
   async function recharger(){
     const snap=await db.collection('conteneurs_plannings').get();
     plannings=[];
-    snap.forEach(d=>plannings.push({id:d.id,...d.data()}));
+    snap.forEach(d=>{
+      const p={id:d.id,...d.data()};
+      if(p.managedByPlanning===true||p.sourceSystem==='kontrol-planning')return;
+      plannings.push(p);
+    });
     remplirAgents();
     afficherListe();
   }
