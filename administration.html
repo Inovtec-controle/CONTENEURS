@@ -25,6 +25,12 @@
     .agent-next{margin-top:6px;font-size:11px;color:#475569}
     .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:5px;box-shadow:0 0 0 3px rgba(22,163,74,.12)}
     .planning-date{font-weight:800;color:#0b6b43}
+    .manual-fallback{padding:0;overflow:hidden}
+    .manual-fallback>summary{cursor:pointer;list-style:none;padding:15px 17px;font-weight:850;color:#334155;background:#f8fafc}
+    .manual-fallback>summary::-webkit-details-marker{display:none}
+    .manual-fallback>summary::after{content:'＋';float:right;color:#64748b}
+    .manual-fallback[open]>summary::after{content:'−'}
+    .manual-fallback-body{padding:0 17px 17px}
     .message{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;font-size:13px;font-weight:600}
     .message.show{display:block}.message.info{background:#eff6ff;color:#1d4ed8}.message.success{background:#ecfdf5;color:#047857}.message.error{background:#fef2f2;color:#b91c1c}
     button:disabled{opacity:.6;cursor:wait}
@@ -68,8 +74,9 @@
       <button class="btn secondary" type="button" onclick="deconnexion()">Déconnexion</button>
     </div>
 
-    <section class="card">
-      <h2>🛟 Saisie manuelle de secours</h2>
+    <details class="card manual-fallback">
+      <summary>🛟 Saisie manuelle de secours</summary>
+      <div class="manual-fallback-body">
       <p class="hint">À utiliser uniquement si une mission ne peut pas être créée dans le Planning KONTROL.</p>
       <div class="source-note">🔄 Fonctionnement normal : tu coches Sortie/Rentrée dans le Planning KONTROL. CONTENEURS crée automatiquement le passage, l’affecte au bon agent et met à jour son lien et les lignes ci-dessous en temps réel.</div>
 
@@ -92,7 +99,8 @@
         <button id="reinitialiserBtn" class="btn secondary" type="button">Réinitialiser le formulaire</button>
       </div>
       <div id="message" class="message" role="status"></div>
-    </section>
+      </div>
+    </details>
 
     <section class="card" style="margin-top:16px">
       <h2>🔗 Liens des agents</h2>
