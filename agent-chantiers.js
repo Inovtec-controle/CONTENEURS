@@ -70,6 +70,8 @@
     const maintenant=aujourdHui();
     planningsAgents.forEach(p=>{
       if(p.actif===false)return;
+      const pilotePlanning=p.managedByPlanning===true||p.sourceSystem==='kontrol-planning';
+      if(pilotePlanning&&p.dateExacte&&p.dateExacte<maintenant)return;
       if(p.agentId===agentId){
         resultat.push({...p,affectationType:'titulaire'});
       }
@@ -109,12 +111,12 @@
           <div class="agent-site-address">${echapper(g.adresse||'Adresse non renseignée')}</div>
           <div class="agent-passage-list">
             ${g.passages.map(p=>`<div class="agent-passage-row">
-              <span><strong>${echapper(p.jour||'—')}</strong></span>
+              <span><strong>${echapper((p.managedByPlanning===true||p.sourceSystem==='kontrol-planning')&&p.dateExacte?dateFR(p.dateExacte):(p.jour||'—'))}</strong></span>
               <span class="agent-passage-action">${p.action==='sortie'?'⬆️ Sortie':'⬇️ Rentrée'}</span>
               <span>${echapper(p.typeConteneur||'—')}</span>
               <span>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</span>
-              <span class="wide-mobile">${echapper(statutFrequence(p.frequence))}</span>
-              ${p.affectationType==='remplacement'?`<span class="agent-passage-replacement">🔄 Remplacement de ${echapper(p.remplacement?.agentAbsentNom||p.agentNom||p.agentId)} du ${dateFR(p.remplacement?.debut)} au ${dateFR(p.remplacement?.fin)}</span>`:''}
+              <span class="wide-mobile">${p.managedByPlanning===true||p.sourceSystem==='kontrol-planning'?'Planning KONTROL':echapper(statutFrequence(p.frequence))}</span>
+              ${p.planningReplacement?.originalAgentId?`<span class="agent-passage-replacement">🔄 Remplacement de ${echapper(p.planningReplacement.originalAgentName||p.planningReplacement.originalAgentId)}</span>`:(p.affectationType==='remplacement'?`<span class="agent-passage-replacement">🔄 Remplacement de ${echapper(p.remplacement?.agentAbsentNom||p.agentNom||p.agentId)} du ${dateFR(p.remplacement?.debut)} au ${dateFR(p.remplacement?.fin)}</span>`:'')}
             </div>`).join('')}
           </div>
         </article>`).join('')}`;
