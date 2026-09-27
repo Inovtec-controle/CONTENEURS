@@ -53,6 +53,14 @@
   let planningsAgents=[];
   const aujourdHui=()=>dateISO();
 
+  function estPilotePlanning(p){return !!(p&&(p.managedByPlanning===true||p.sourceSystem==='kontrol-planning'));}
+  function estMissionVisible(p){
+    if(!p||p.actif===false||p.planningRemoved===true)return false;
+    if(!estPilotePlanning(p))return true;
+    const exacte=String(p.dateExacte||p.planningDate||'');
+    return !exacte||exacte>=aujourdHui();
+  }
+
   function dateFR(iso){
     if(!iso)return '—';
     const [a,m,j]=String(iso).split('-');
@@ -69,9 +77,8 @@
     const resultat=[];
     const maintenant=aujourdHui();
     planningsAgents.forEach(p=>{
-      if(p.actif===false)return;
-      const pilotePlanning=p.managedByPlanning===true||p.sourceSystem==='kontrol-planning';
-      if(pilotePlanning&&p.dateExacte&&p.dateExacte<maintenant)return;
+      if(!estMissionVisible(p))return;
+      const pilotePlanning=estPilotePlanning(p);
       if(p.agentId===agentId){
         resultat.push({...p,affectationType:'titulaire'});
       }
@@ -142,16 +149,18 @@
     const map=new Map();
     const dateDuJour=aujourdHui();
 
-    function ajouter(id,nom){
+    function ajouter(id,nom,dateExacte=''){
       if(!id)return;
-      const a=map.get(id)||{agentId:id,agentNom:nom||id,nombre:0};
+      const a=map.get(id)||{agentId:id,agentNom:nom||id,nombre:0,dates:[]};
       a.nombre++;
       if(nom)a.agentNom=nom;
+      if(dateExacte)a.dates.push(dateExacte);
       map.set(id,a);
     }
 
     planningsAgents.forEach(p=>{
-      if(p.actif!==false)ajouter(p.agentId,p.agentNom);
+      if(estMissionVisible(p))ajouter(p.agentId,p.agentNom,String(p.dateExacte||p.planningDate||''));
+      if(estPilotePlanning(p))return;
       const vus=new Set();
       (Array.isArray(p.remplacements)?p.remplacements:[]).forEach(r=>{
         if(r&&!r.annule&&r.fin>=dateDuJour&&r.agentId&&!vus.has(r.agentId)){
@@ -165,9 +174,11 @@
     const zone=document.getElementById('agents');
     zone.innerHTML=liste.map(a=>{
       const lien=lienAgent(a.agentId);
+      const prochaine=a.dates.sort()[0]||'';
       return `<article class="agent-link-card">
-        <h3>${echapper(a.agentNom)}</h3>
-        <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''}</span></div>
+        <h3><span class="live-dot"></span>${echapper(a.agentNom)}</h3>
+        <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''} actif${a.nombre>1?'s':''}/à venir</span></div>
+        ${prochaine?`<div class="agent-next">Prochain passage daté : <strong>${echapper(dateFR(prochaine))}</strong></div>`:''}
         <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
         <div class="agent-link-row">
           <button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
@@ -175,9 +186,9 @@
           <button class="btn secondary agent-sites-button" type="button" data-agent-id="${echapper(a.agentId)}" data-agent-nom="${echapper(a.agentNom)}">🏢 Voir les chantiers</button>
         </div>
       </article>`;
-    }).join('')||'<div class="empty">Aucun agent.</div>';
+    }).join('')||'<div class="empty">Aucune mission active ou à venir. Les liens apparaîtront automatiquement depuis Planning.</div>';
 
     document.querySelectorAll('.copy-agent-link').forEach(b=>b.addEventListener('click',()=>copierLien(b.dataset.link,b)));
     document.querySelectorAll('.agent-sites-button').forEach(b=>b.addEventListener('click',()=>ouvrirChantiers(b.dataset.agentId,b.dataset.agentNom)));
-  };
+  };;
 })();
