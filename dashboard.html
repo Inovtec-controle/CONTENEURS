@@ -11,8 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260927-planningbridge1"></script>
-  <script src="auth-ui.js?v=20260927-planningbridge1"></script>
+  <script src="firebase.js?v=20260927-livedashboard1"></script>
+  <script src="auth-ui.js?v=20260927-livedashboard1"></script>
   <style>
     .type-tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:700}
     .calendar-card{margin-bottom:16px}
@@ -71,6 +71,8 @@ const stats=document.getElementById('stats');
 const dateInput=document.getElementById('dateConsultation');
 const dateLibelle=document.getElementById('dateLibelle');
 let arretEcoutePointages=null;
+let arretEcoutePlannings=null;
+let timerRechargeDashboard=null;
 
 function echapper(texte=''){
   return String(texte).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -188,13 +190,24 @@ async function charger(){
     <div class="stat failure"><span>Défaillances</span><strong>${defaillances}</strong></div>`;
 }
 
+function programmerRechargeDashboard(){
+  clearTimeout(timerRechargeDashboard);
+  timerRechargeDashboard=setTimeout(()=>charger().catch(afficherErreur),80);
+}
+
 function ecouterDateSelectionnee(){
   if(arretEcoutePointages)arretEcoutePointages();
   const iso=dateInput.value||dateISO();
   arretEcoutePointages=db.collection('conteneurs_pointages').where('date','==',iso).onSnapshot(
-    ()=>charger().catch(afficherErreur),
+    programmerRechargeDashboard,
     afficherErreur
   );
+  if(!arretEcoutePlannings){
+    arretEcoutePlannings=db.collection('conteneurs_plannings').onSnapshot(
+      programmerRechargeDashboard,
+      afficherErreur
+    );
+  }
 }
 
 function afficherErreur(e){
