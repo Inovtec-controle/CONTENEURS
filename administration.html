@@ -11,8 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260927-planningbridge1"></script>
-  <script src="auth-ui.js?v=20260927-planningbridge1"></script>
+  <script src="firebase.js?v=20260927-livedashboard1"></script>
+  <script src="auth-ui.js?v=20260927-livedashboard1"></script>
   <style>
     .agent-links-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
     .agent-link-card{border:1px solid #dbe4df;border-radius:16px;padding:14px;background:#f8fbf9}
@@ -22,6 +22,9 @@
     .agent-url{width:100%;padding:10px;border:1px solid #ccd8d1;border-radius:10px;background:white;font-size:12px}
     .link-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
     .agent-count{display:inline-block;padding:3px 8px;border-radius:999px;background:#e5f6ea;color:#18713b;font-size:11px;font-weight:700}
+    .agent-next{margin-top:6px;font-size:11px;color:#475569}
+    .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:5px;box-shadow:0 0 0 3px rgba(22,163,74,.12)}
+    .planning-date{font-weight:800;color:#0b6b43}
     .message{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;font-size:13px;font-weight:600}
     .message.show{display:block}.message.info{background:#eff6ff;color:#1d4ed8}.message.success{background:#ecfdf5;color:#047857}.message.error{background:#fef2f2;color:#b91c1c}
     button:disabled{opacity:.6;cursor:wait}
@@ -54,8 +57,8 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>⚙️ Administration</h1>
-    <p>Créer un chantier puis programmer toutes ses sorties et rentrées en une seule fois</p>
+    <h1>⚙️ Pilotage conteneurs</h1>
+    <p>Les missions viennent du Planning KONTROL · ici tu distribues les liens et contrôles les passages</p>
   </header>
 
   <main class="container">
@@ -66,9 +69,9 @@
     </div>
 
     <section class="card">
-      <h2>Créer un chantier et son planning</h2>
-      <p class="hint">Le chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Pour chaque passage, choisis OM, TRI ou OM/TRI.</p>
-      <div class="source-note">🔄 Les tâches « Sortie/Rentrée conteneurs » marquées dans le Planning KONTROL sont synchronisées automatiquement avec l’agent, le jour et l’horaire réellement planifiés. Les programmations saisies ici restent disponibles en secours lorsqu’aucune mission Planning ne les remplace.</div>
+      <h2>🛟 Saisie manuelle de secours</h2>
+      <p class="hint">À utiliser uniquement si une mission ne peut pas être créée dans le Planning KONTROL.</p>
+      <div class="source-note">🔄 Fonctionnement normal : tu coches Sortie/Rentrée dans le Planning KONTROL. CONTENEURS crée automatiquement le passage, l’affecte au bon agent et met à jour son lien et les lignes ci-dessous en temps réel.</div>
 
       <div class="site-form" style="margin-top:14px">
         <input id="chantier" placeholder="Nom du chantier">
@@ -93,12 +96,12 @@
 
     <section class="card" style="margin-top:16px">
       <h2>🔗 Liens des agents</h2>
-      <p class="meta">Chaque agent apparaît une seule fois, même s’il possède plusieurs chantiers.</p>
+      <p class="meta">Créés automatiquement dès qu’un agent possède au moins une mission active ou à venir. Le même lien peut être conservé et envoyé une seule fois à l’agent.</p>
       <div id="agents" class="agent-links-grid"><div class="empty">Connexion en cours…</div></div>
     </section>
 
     <section class="card" style="margin-top:16px">
-      <h2>Passages programmés</h2>
+      <h2>Passages actifs / à venir</h2>
       <div class="list-toolbar">
         <label for="triListe">Trier la liste par</label>
         <select id="triListe">
@@ -122,6 +125,7 @@ const enregistrerBtn=document.getElementById('enregistrerBtn');
 const message=document.getElementById('message');
 let compteurPassages=0;
 let donneesListe=[];
+let arretEcouteProgrammations=null;
 
 const joursOptions=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
 const frequencesOptions=[
