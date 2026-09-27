@@ -149,22 +149,28 @@
     const map=new Map();
     const dateDuJour=aujourdHui();
 
-    function ajouter(id,nom,dateExacte=''){
-      if(!id)return;
-      const a=map.get(id)||{agentId:id,agentNom:nom||id,nombre:0,dates:[]};
-      a.nombre++;
+    function assurer(id,nom){
+      if(!id)return null;
+      const a=map.get(id)||{agentId:id,agentNom:nom||id,nombreActif:0,dates:[]};
       if(nom)a.agentNom=nom;
-      if(dateExacte)a.dates.push(dateExacte);
       map.set(id,a);
+      return a;
+    }
+    function compterActif(id,nom,dateExacte=''){
+      const a=assurer(id,nom);if(!a)return;
+      a.nombreActif++;
+      if(dateExacte)a.dates.push(dateExacte);
     }
 
     planningsAgents.forEach(p=>{
-      if(estMissionVisible(p))ajouter(p.agentId,p.agentNom,String(p.dateExacte||p.planningDate||''));
+      if(p.agentId)assurer(p.agentId,p.agentNom);
+      if(estMissionVisible(p))compterActif(p.agentId,p.agentNom,String(p.dateExacte||p.planningDate||''));
       if(estPilotePlanning(p))return;
       const vus=new Set();
       (Array.isArray(p.remplacements)?p.remplacements:[]).forEach(r=>{
+        if(r?.agentId)assurer(r.agentId,r.agentNom);
         if(r&&!r.annule&&r.fin>=dateDuJour&&r.agentId&&!vus.has(r.agentId)){
-          ajouter(r.agentId,r.agentNom);
+          compterActif(r.agentId,r.agentNom);
           vus.add(r.agentId);
         }
       });
@@ -175,10 +181,11 @@
     zone.innerHTML=liste.map(a=>{
       const lien=lienAgent(a.agentId);
       const prochaine=a.dates.sort()[0]||'';
+      const nb=a.nombreActif;
       return `<article class="agent-link-card">
         <h3><span class="live-dot"></span>${echapper(a.agentNom)}</h3>
-        <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${a.nombre} passage${a.nombre>1?'s':''} actif${a.nombre>1?'s':''}/à venir</span></div>
-        ${prochaine?`<div class="agent-next">Prochain passage daté : <strong>${echapper(dateFR(prochaine))}</strong></div>`:''}
+        <div class="agent-link-id">Identifiant : <strong>${echapper(a.agentId)}</strong> · <span class="agent-count">${nb} passage${nb>1?'s':''} actif${nb>1?'s':''}/à venir</span></div>
+        ${prochaine?`<div class="agent-next">Prochain passage daté : <strong>${echapper(dateFR(prochaine))}</strong></div>`:'<div class="agent-next">Lien disponible · aucun passage actif/à venir actuellement</div>'}
         <input class="agent-url" value="${echapper(lien)}" readonly onclick="this.select()">
         <div class="agent-link-row">
           <button class="ok copy-agent-link" type="button" data-link="${echapper(lien)}">📋 Copier le lien</button>
@@ -186,10 +193,10 @@
           <button class="btn secondary agent-sites-button" type="button" data-agent-id="${echapper(a.agentId)}" data-agent-nom="${echapper(a.agentNom)}">🏢 Voir les chantiers</button>
         </div>
       </article>`;
-    }).join('')||'<div class="empty">Aucune mission active ou à venir. Les liens apparaîtront automatiquement depuis Planning.</div>';
+    }).join('')||'<div class="empty">Aucun agent conteneur connu. Une bulle apparaîtra dès qu’une première mission sera synchronisée depuis Planning.</div>';
 
     document.querySelectorAll('.copy-agent-link').forEach(b=>b.addEventListener('click',()=>copierLien(b.dataset.link,b)));
     document.querySelectorAll('.agent-sites-button').forEach(b=>b.addEventListener('click',()=>ouvrirChantiers(b.dataset.agentId,b.dataset.agentNom)));
-  };
+  };;
   try{if(Array.isArray(donneesListe))afficherLiensAgents(donneesListe)}catch{}
 })();
