@@ -11,7 +11,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="firebase.js?v=20260927-authfix1"></script>
+  <script src="firebase.js?v=20260927-planningbridge1"></script>
   <script src="auth-ui.js?v=20260927-adminfix1"></script>
   <style>
     .agent-links-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
@@ -68,7 +68,7 @@
     <section class="card">
       <h2>Créer un chantier et son planning</h2>
       <p class="hint">Le chantier, l’adresse et l’agent ne sont saisis qu’une seule fois. Pour chaque passage, choisis OM, TRI ou OM/TRI.</p>
-      <div class="source-note">📅 Pour les chantiers renseignés dans Inovtec Dashboard → Infos chantier, les jours de Sortie OM, Rentrée OM, Sortie TRI et Rentrée TRI sont désormais pilotés depuis cette fiche. Ici restent les agents, horaires, fréquences et remplacements.</div>
+      <div class="source-note">🔄 Les tâches « Sortie/Rentrée conteneurs » marquées dans le Planning KONTROL sont synchronisées automatiquement avec l’agent, le jour et l’horaire réellement planifiés. Les programmations saisies ici restent disponibles en secours lorsqu’aucune mission Planning ne les remplace.</div>
 
       <div class="site-form" style="margin-top:14px">
         <input id="chantier" placeholder="Nom du chantier">
@@ -353,9 +353,10 @@ function trierProgrammations(data){
 function afficherProgrammations(data){
   const liste=trierProgrammations(data);
   document.getElementById('liste').innerHTML=liste.map(p=>{
-    const joursLies=window.InovtecConteneursInfos?.joursInfosPourPlanning?.(p);
+    const pilotePlanning=p.managedByPlanning===true||p.sourceSystem==='kontrol-planning';
+    const joursLies=!pilotePlanning&&window.InovtecConteneursInfos?.joursInfosPourPlanning?.(p);
     const jourAffiche=joursLies?window.InovtecConteneursInfos.libelleJoursInfosPlanning(p):(p.jour||'');
-    const source=joursLies?'<br><span class="source-tag">Infos chantier</span>':'';
+    const source=pilotePlanning?'<br><span class="source-tag">Planning KONTROL</span>':(joursLies?'<br><span class="source-tag">Infos chantier</span>':'');
     return `<tr>
       <td><strong>${echapper(p.chantierNom)}</strong><br><span class="meta">${echapper(p.adresse||'')}</span></td>
       <td>${p.action==='sortie'?'Sortie':'Rentrée'}</td>
@@ -363,7 +364,7 @@ function afficherProgrammations(data){
       <td>${echapper(jourAffiche)}${source}<br><span class="meta">${echapper(p.frequence||'')}</span></td>
       <td>${echapper(p.agentNom||p.agentId)}<br><span class="meta">${echapper(p.agentId||'')}</span></td>
       <td>${echapper(p.heureDebut||'—')}–${echapper(p.heureFin||'—')}</td>
-      <td><button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button></td></tr>`;
+      <td>${pilotePlanning?'<span class="meta">Piloté par Planning</span>':`<button class="danger" type="button" onclick="supprimer('${p.id}')">Supprimer</button>`}</td></tr>`;
   }).join('')||'<tr><td colspan="7" class="empty">Aucune programmation.</td></tr>';
 }
 
