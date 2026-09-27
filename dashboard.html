@@ -89,7 +89,8 @@ function modifierDate(nombreJours){
 }
 
 function planningValablePourDate(planning,date){
-  if(planning.createdAt&&typeof planning.createdAt.toDate==='function'){
+  const pilotePlanning=planning?.managedByPlanning===true||planning?.sourceSystem==='kontrol-planning';
+  if(!pilotePlanning&&planning.createdAt&&typeof planning.createdAt.toDate==='function'){
     const finJour=new Date(date);
     finJour.setHours(23,59,59,999);
     if(planning.createdAt.toDate()>finJour)return false;
