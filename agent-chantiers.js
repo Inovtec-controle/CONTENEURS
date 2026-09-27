@@ -190,5 +190,6 @@
 
     document.querySelectorAll('.copy-agent-link').forEach(b=>b.addEventListener('click',()=>copierLien(b.dataset.link,b)));
     document.querySelectorAll('.agent-sites-button').forEach(b=>b.addEventListener('click',()=>ouvrirChantiers(b.dataset.agentId,b.dataset.agentNom)));
-  };;
+  };
+  try{if(Array.isArray(donneesListe))afficherLiensAgents(donneesListe)}catch{}
 })();
