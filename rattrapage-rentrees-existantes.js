@@ -102,7 +102,11 @@
       try{
         const snap=await db.collection('conteneurs_plannings').get();
         const plannings=[];
-        snap.forEach(d=>plannings.push({id:d.id,...d.data()}));
+        snap.forEach(d=>{
+          const p={id:d.id,...d.data()};
+          if(p.managedByPlanning===true||p.sourceSystem==='kontrol-planning')return;
+          plannings.push(p);
+        });
 
         const sorties=plannings.filter(p=>p.action==='sortie'&&p.actif!==false&&joursSuivants[p.jour]);
         const manquantes=sorties.filter(sortie=>!rentreeExiste(sortie,plannings));
